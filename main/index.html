@@ -39,22 +39,19 @@ $( async () => {
 	
 	obniz.onconnect = async () => {
 
-    // 画像変更のメッセージを受け取ったら変更する
-    obniz.onmessage = (message, from) => {
+    obniz.onmessage = async (message, from) => {
       if (message === "image-change") {
+        // 画像変更のメッセージを受け取ったら変更する
         changeImg();
-      }
-    };
-
-    // 画像再取得のメッセージを受け取ったらfetchする
-    obniz.onmessage = async(message, from) => {
-      if (message === "image-fetch") {
+      } else if (message === "image-fetch") {
+        // 画像再取得のメッセージを受け取ったらfetchする
         IMAGES = await fetchImg();
         console.log('取得した画像:', IMAGES);
 
         // 再取得時、一番新しいものを表示する
         if (IMAGES.length > 0) {
-          $('img').attr('src', IMAGES[0]);
+          currentImg = 0;
+          $('img').attr('src', IMAGES[currentImg]);
         }
       }
     };
@@ -133,10 +130,8 @@ $( async () => {
 
     if (error) {
       console.error('画像取得エラー:', error);
-      return [];
+      return ['./tie_black.jpg', './glass_black.jpg', './scurf_black.jpg'];
     }
-
-    console.log('取得したファイル一覧:', data);
 
     const images = data.map(file =>
       `${supabaseUrl}/storage/v1/object/public/chair-person-backrest/${file.name}`
