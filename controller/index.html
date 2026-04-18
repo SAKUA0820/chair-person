@@ -1,0 +1,30 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+    />
+    <link rel="stylesheet" href="/css/starter-sample.css" />
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+  </head>
+  <body>
+    <div id="obniz-debug"></div>
+
+    <div class="wrap">
+
+      <div class="buttons text-center">
+        <h3>デザインを変更する</h3>
+        <button class="btn btn-primary text-center" id="change">image change</button>
+      </div>
+    </div>
+
+    <script>
+      $("#change").on('click', () => {
+        // chair personで使っているobnizにgetリクエストを送る
+        $.get("https://obniz.com/obniz/4894-5036/message?data=image-change");
+      });
+    </script>
+  </body>
+</html>
