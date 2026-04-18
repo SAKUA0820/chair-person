@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<script src="https://unpkg.com/obniz@3.x/obniz.js" crossorigin="anonymous"></script>
+	<script src="https://code.jquery.com/jquery-3.4.1.js" integrity="sha256-WpOohJOqMqqyKL9FccASB9O0KwACQJpFTUBLTYOVvVU=" crossorigin="anonymous"></script>
+	<title>Potentiometer to Background Color</title>
+</head>
+<body style="margin: 0; background: black">
+  <img src="./tie_black.jpg" width="100%" style="opacity: 0;">
+<script>
+$( () => {
+  const IMAGES = ['./tie_black.jpg', './glass_black.jpg', './scurf_black.jpg'];
+  let currentImg = 0;
+  let touchCount = 0;
+  // 5回タップで画像差し替え
+  // $('body').on('touchend', judgeCount);
+
+	let obniz = new Obniz('OBNIZ_ID_HERE');
+  console.log(obniz.connectionState)
+	
+	obniz.onconnect = async () => {
+
+    obniz.onmessage = (message, from) => {
+    if (message === "image-change") {
+      changeImg();
+    }
+  };
+    
+    obniz.io2.output(true);
+    obniz.io1.output(false);
+    obniz.io9.output(true);
+    obniz.io10.output(false);
+
+    let leftRef = 5;
+    let rightRef = 5;
+
+    let opacity = 0;
+
+    obniz.repeat(async ()=>{
+
+      leftRef = await obniz.ad11.getWait();
+      rightRef = await obniz.ad0.getWait();
+      console.log(leftRef + ',' + rightRef);
+      
+      if((leftRef < 0.5) || (rightRef < 0.5)){
+        //opacityを少しずつ足していく
+        opacity += 0.2;
+        //opacity1以上なら1にする
+        if(opacity >= 1){
+          opacity = 1;
+        }
+        // $('img').show();
+        $('img').css('opacity', opacity);
+      }else{
+        //opacityを少しずつ減らしていく
+        opacity -= 0.2;
+        //opacity0以下なら0にする
+        if(opacity <= 0){
+          opacity = 0;
+        }
+        // $('img').hide();
+        $('img').css('opacity', opacity);
+      }
+      
+   }, 200);
+	}
+
+  // function judgeCount(){
+  //   // 初回タップだったらタイマー発動
+  //   if(touchCount === 0){
+  //     setTimeout(() => {
+  //       touchCount = 0;
+  //     }, 5000);
+  //   } else if(touchCount >= 5){
+  //     // 5秒間の間に5タップしたら画像変更
+  //     changeImg();
+  //     touchCount = 0;
+  //   }
+  //   touchCount++;
+  // }
+  function changeImg() {
+    console.log("change!");
+    currentImg++;
+    if(currentImg >= IMAGES.length) {
+      currentImg = 0;
+    }
+    $('img').attr('src', IMAGES[currentImg]);
+  }
+});	
+</script>
+</body>
+</html>
