@@ -5,19 +5,34 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<script src="https://unpkg.com/obniz@3.x/obniz.js" crossorigin="anonymous"></script>
 	<script src="https://code.jquery.com/jquery-3.4.1.js" integrity="sha256-WpOohJOqMqqyKL9FccASB9O0KwACQJpFTUBLTYOVvVU=" crossorigin="anonymous"></script>
-	<title>Potentiometer to Background Color</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<title>Chair Person</title>
 </head>
 <body style="margin: 0; background: black">
   <img src="./tie_black.jpg" width="100%" style="opacity: 0;">
 <script>
-$( () => {
-  const IMAGES = ['./tie_black.jpg', './glass_black.jpg', './scurf_black.jpg'];
+$( async () => {
+  // 画像ストレージ系の設定
+  const supabaseUrl = 'SUPABASE_URL';
+  const supabaseKey = 'SUPABASE_KEY';
+  const { createClient } = supabase;
+  const supabaseClient = createClient(supabaseUrl, supabaseKey);
+  let IMAGES = [];
+
+  // フラグ系
   let currentImg = 0;
   let touchCount = 0;
   let hasBeenFullyShown = false;
   let hasBeenFullyHidden = false;
   // 5回タップで画像差し替え
   // $('body').on('touchend', judgeCount);
+
+  // ストレージ内の画像の取得・配列格納
+  IMAGES = await fetchImg();
+  console.log('取得した画像:', IMAGES);
+  if (IMAGES.length > 0) {
+    $('img').attr('src', IMAGES[0]);
+  }
 
 	let obniz = new Obniz('OBNIZ_ID_HERE');
   console.log(obniz.connectionState)
@@ -95,6 +110,26 @@ $( () => {
   //   }
   //   touchCount++;
   // }
+
+  // 画像の取得・格納
+  async function fetchImg(){
+    const { data, error } = await supabaseClient.storage
+      .from('chair-person-backrest')
+      .list('', { sortBy: { column: 'created_at', order: 'desc' } });
+
+    if (error) {
+      console.error('画像取得エラー:', error);
+      return [];
+    }
+
+    console.log('取得したファイル一覧:', data);
+
+    const images = data.map(file =>
+      `${supabaseUrl}/storage/v1/object/public/chair-person-backrest/${file.name}`
+    );
+
+    return images;
+  }
 
   // 順番に画像を変える
   function changeImg() {
