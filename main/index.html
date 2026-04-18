@@ -39,11 +39,25 @@ $( async () => {
 	
 	obniz.onconnect = async () => {
 
+    // 画像変更のメッセージを受け取ったら変更する
     obniz.onmessage = (message, from) => {
-    if (message === "image-change") {
-      changeImg();
-    }
-  };
+      if (message === "image-change") {
+        changeImg();
+      }
+    };
+
+    // 画像再取得のメッセージを受け取ったらfetchする
+    obniz.onmessage = async(message, from) => {
+      if (message === "image-fetch") {
+        IMAGES = await fetchImg();
+        console.log('取得した画像:', IMAGES);
+
+        // 再取得時、一番新しいものを表示する
+        if (IMAGES.length > 0) {
+          $('img').attr('src', IMAGES[0]);
+        }
+      }
+    };
     
     obniz.io2.output(true);
     obniz.io1.output(false);

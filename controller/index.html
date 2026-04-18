@@ -17,13 +17,21 @@
       <div class="buttons text-center">
         <h3>デザインを変更する</h3>
         <button class="btn btn-primary text-center" id="change">image change</button>
+
+        <h3>画像の更新をする</h3>
+        <button class="btn btn-primary text-center" id="fetch">fetch image</button>
       </div>
     </div>
 
     <script>
       $("#change").on('click', () => {
         // chair personで使っているobnizにgetリクエストを送る
-        $.get("https://obniz.com/obniz/4894-5036/message?data=image-change");
+        $.get("https://obniz.com/obniz/XXXX-XXXX/message?data=image-change");
+      });
+
+      $("#fetch").on('click', () => {
+        // chair personで使っているobnizにgetリクエストを送る
+        $.get("https://obniz.com/obniz/XXXX-XXXX/message?data=image-fetch");
       });
     </script>
   </body>
