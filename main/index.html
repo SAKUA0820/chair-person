@@ -14,6 +14,8 @@ $( () => {
   const IMAGES = ['./tie_black.jpg', './glass_black.jpg', './scurf_black.jpg'];
   let currentImg = 0;
   let touchCount = 0;
+  let hasBeenFullyShown = false;
+  let hasBeenFullyHidden = false;
   // 5回タップで画像差し替え
   // $('body').on('touchend', judgeCount);
 
@@ -50,6 +52,7 @@ $( () => {
         //opacity1以上なら1にする
         if(opacity >= 1){
           opacity = 1;
+          hasBeenFullyShown = true;
         }
         // $('img').show();
         $('img').css('opacity', opacity);
@@ -59,10 +62,22 @@ $( () => {
         //opacity0以下なら0にする
         if(opacity <= 0){
           opacity = 0;
+          // すでに一度画像表示後であれば、非表示フラグをtrueにする
+          if(hasBeenFullyShown) {
+            hasBeenFullyHidden = true;
+          }
         }
         // $('img').hide();
         $('img').css('opacity', opacity);
       }
+
+      // 一度、表示→非表示になった場合、画像をランダムで変える
+      if(hasBeenFullyShown && hasBeenFullyHidden){
+        hasBeenFullyShown = false;
+        hasBeenFullyHidden = false;
+        let nextImgIndex = Math.floor(Math.random() * IMAGES.length);
+        changeImage(nextImgIndex);
+      } 
       
    }, 200);
 	}
@@ -80,12 +95,23 @@ $( () => {
   //   }
   //   touchCount++;
   // }
+
+  // 順番に画像を変える
   function changeImg() {
-    console.log("change!");
+    console.log(`change image to the next`);
     currentImg++;
     if(currentImg >= IMAGES.length) {
       currentImg = 0;
     }
+    $('img').attr('src', IMAGES[currentImg]);
+  }
+
+  // 特定の画像に変える
+  function changeImage(index) {
+    if (index >= IMAGES.length) return;
+
+    console.log(`change image to ${index}`);
+    currentImg = index;
     $('img').attr('src', IMAGES[currentImg]);
   }
 });	
