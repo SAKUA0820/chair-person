@@ -1,37 +1,1087 @@
-<html>
+<!doctype html>
+<html lang="ja">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <link
       rel="stylesheet"
       href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
     />
     <link rel="stylesheet" href="/css/starter-sample.css" />
     <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <title>Chair Person Controller</title>
+
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #181818;
+        --muted: #6e6e73;
+        --panel: rgba(255, 255, 255, 0.86);
+        --accent: #246bfe;
+        --danger: #c92a2a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, #eef4ff 0, transparent 38%),
+          linear-gradient(160deg, #f8f8f5, #e7e7e2);
+        font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+      }
+
+      button,
+      input {
+        touch-action: manipulation;
+      }
+
+      .controller-shell {
+        width: min(680px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: max(32px, env(safe-area-inset-top)) 0 max(32px, env(safe-area-inset-bottom));
+      }
+
+      .controller-header {
+        margin-bottom: 24px;
+      }
+
+      .eyebrow {
+        margin: 0 0 6px;
+        color: var(--accent);
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 6vw, 3.25rem);
+        font-weight: 800;
+        letter-spacing: -0.04em;
+      }
+
+      .lead-copy {
+        margin: 10px 0 0;
+        color: var(--muted);
+      }
+
+      .controller-card {
+        padding: 22px;
+        border: 1px solid rgba(255, 255, 255, 0.72);
+        border-radius: 24px;
+        background: var(--panel);
+        box-shadow: 0 18px 55px rgba(35, 39, 47, 0.12);
+        backdrop-filter: blur(18px);
+      }
+
+      .action-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .control-button {
+        min-height: 78px;
+        padding: 14px 16px;
+        border: 0;
+        border-radius: 17px;
+        color: #fff;
+        background: #28282b;
+        font-size: 1rem;
+        font-weight: 750;
+        box-shadow: 0 7px 16px rgba(0, 0, 0, 0.14);
+        transition: transform 140ms ease, filter 140ms ease;
+      }
+
+      .control-button:active {
+        transform: scale(0.97);
+      }
+
+      .control-button:disabled {
+        opacity: 0.55;
+      }
+
+      .control-button--draw {
+        grid-column: 1 / -1;
+        min-height: 98px;
+        background: var(--accent);
+        font-size: 1.15rem;
+      }
+
+      .control-button small {
+        display: block;
+        margin-top: 4px;
+        font-size: 0.74rem;
+        font-weight: 500;
+        opacity: 0.76;
+      }
+
+      .controller-status {
+        min-height: 1.5em;
+        margin: 15px 4px 0;
+        color: var(--muted);
+        font-size: 0.9rem;
+        text-align: center;
+      }
+
+      .controller-status[data-state="success"] {
+        color: #157347;
+      }
+
+      .controller-status[data-state="error"] {
+        color: var(--danger);
+      }
+
+      .drawing-mode {
+        position: fixed;
+        z-index: 1000;
+        inset: 0;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        color: #fff;
+        background: #090909;
+        overflow: hidden;
+      }
+
+      .drawing-mode[hidden] {
+        display: none;
+      }
+
+      .drawing-toolbar {
+        position: relative;
+        z-index: 3;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 10px max(12px, env(safe-area-inset-left));
+        border-bottom: 1px solid #303030;
+        background: #151515;
+      }
+
+      .toolbar-button {
+        min-height: 44px;
+        padding: 9px 14px;
+        border: 1px solid #3d3d3d;
+        border-radius: 12px;
+        color: #fff;
+        background: #262626;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .toolbar-button--danger {
+        color: #ffb2b2;
+      }
+
+      .toolbar-title {
+        margin-right: auto;
+        font-size: 1rem;
+        font-weight: 800;
+      }
+
+      .pen-control {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        min-height: 44px;
+        padding: 6px 12px;
+        border-radius: 12px;
+        background: #262626;
+      }
+
+      .pen-control label {
+        margin: 0;
+        font-size: 0.84rem;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      #pen-size {
+        width: clamp(110px, 22vw, 210px);
+        accent-color: #fff;
+      }
+
+      #pen-size-value {
+        width: 2.8em;
+        color: #c8c8c8;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+      }
+
+      .canvas-stage {
+        position: relative;
+        display: grid;
+        min-width: 0;
+        min-height: 0;
+        place-items: center;
+        padding: 12px;
+        background: #d7d7d7;
+        overflow: hidden;
+      }
+
+      #drawing-canvas {
+        display: block;
+        width: auto;
+        height: auto;
+        max-width: 100%;
+        max-height: 100%;
+        aspect-ratio: 3 / 4;
+        border: 1px solid #fff;
+        background: #000;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+        cursor: crosshair;
+        touch-action: none;
+      }
+
+      .drawing-footer {
+        position: absolute;
+        z-index: 3;
+        right: max(12px, env(safe-area-inset-right));
+        bottom: max(12px, env(safe-area-inset-bottom));
+      }
+
+      .transfer-button {
+        min-width: 180px;
+        min-height: 52px;
+        padding: 12px 24px;
+        border: 0;
+        border-radius: 15px;
+        color: #111;
+        background: #fff;
+        font-size: 1rem;
+        font-weight: 850;
+        box-shadow: 0 7px 20px rgba(255, 255, 255, 0.16);
+      }
+
+      .drawing-toast {
+        position: absolute;
+        z-index: 20;
+        right: max(12px, env(safe-area-inset-right));
+        bottom: max(82px, calc(env(safe-area-inset-bottom) + 72px));
+        left: 50%;
+        width: min(640px, calc(100% - 24px));
+        max-height: 32vh;
+        padding: 13px 42px 13px 16px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 14px;
+        color: #fff;
+        background: rgba(28, 28, 30, 0.94);
+        box-shadow: 0 10px 35px rgba(0, 0, 0, 0.38);
+        font-size: 0.9rem;
+        line-height: 1.55;
+        text-align: left;
+        white-space: pre-wrap;
+        word-break: break-word;
+        transform: translateX(-50%);
+        overflow: auto;
+        backdrop-filter: blur(12px);
+      }
+
+      .drawing-toast::after {
+        position: absolute;
+        top: 9px;
+        right: 13px;
+        color: #aaa;
+        content: '×';
+        font-size: 1.35rem;
+        line-height: 1;
+      }
+
+      .drawing-toast[hidden] {
+        display: none;
+      }
+
+      .drawing-toast[data-state="success"] {
+        border-color: rgba(64, 210, 126, 0.62);
+      }
+
+      .drawing-toast[data-state="error"] {
+        border-color: rgba(255, 99, 99, 0.72);
+        background: rgba(74, 22, 25, 0.96);
+      }
+
+      .swipe-overlay {
+        position: absolute;
+        z-index: 10;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        color: #181818;
+        background: rgba(255, 255, 255, 0.86);
+        backdrop-filter: blur(9px);
+        touch-action: none;
+        user-select: none;
+      }
+
+      .swipe-overlay[hidden] {
+        display: none;
+      }
+
+      .overlay-cancel {
+        position: absolute;
+        top: max(16px, env(safe-area-inset-top));
+        right: max(16px, env(safe-area-inset-right));
+        min-height: 44px;
+        padding: 9px 17px;
+        border: 1px solid rgba(0, 0, 0, 0.16);
+        border-radius: 999px;
+        color: #222;
+        background: rgba(255, 255, 255, 0.74);
+        font-weight: 750;
+      }
+
+      .overlay-cancel:disabled {
+        opacity: 0.35;
+      }
+
+      .swipe-content {
+        width: min(420px, calc(100% - 48px));
+        text-align: center;
+      }
+
+      .swipe-content h2 {
+        margin: 0 0 9px;
+        font-size: clamp(1.7rem, 5vw, 2.6rem);
+        font-weight: 850;
+        letter-spacing: -0.04em;
+      }
+
+      .swipe-content p {
+        margin: 0;
+        color: #57575c;
+      }
+
+      .swipe-track {
+        position: relative;
+        width: 120px;
+        height: 230px;
+        margin: 24px auto 10px;
+      }
+
+      .swipe-arrow {
+        position: absolute;
+        top: 5px;
+        left: 50%;
+        color: rgba(0, 0, 0, 0.34);
+        font-size: 4.8rem;
+        font-weight: 300;
+        transform: translateX(-50%);
+      }
+
+      .swipe-guide {
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        font-size: 4.4rem;
+        filter: grayscale(1);
+        transform: translateX(-50%);
+        animation: guide-swipe 1.65s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+
+      .swipe-overlay.is-dragging .swipe-guide {
+        animation: none;
+        transform: translate(-50%, var(--drag-offset, 0));
+      }
+
+      .swipe-overlay.is-uploading .swipe-track,
+      .swipe-overlay.is-complete .swipe-track {
+        display: none;
+      }
+
+      .upload-spinner {
+        display: none;
+        width: 54px;
+        height: 54px;
+        margin: 30px auto 8px;
+        border: 5px solid rgba(0, 0, 0, 0.13);
+        border-top-color: #181818;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      .swipe-overlay.is-uploading .upload-spinner {
+        display: block;
+      }
+
+      .complete-mark {
+        display: none;
+        margin: 24px auto 8px;
+        color: #16854b;
+        font-size: 4.5rem;
+        line-height: 1;
+      }
+
+      .swipe-overlay.is-complete .complete-mark {
+        display: block;
+      }
+
+      @keyframes guide-swipe {
+        0% {
+          opacity: 0;
+          transform: translate(-50%, 20px);
+        }
+        20% {
+          opacity: 1;
+        }
+        75% {
+          opacity: 1;
+          transform: translate(-50%, -125px);
+        }
+        100% {
+          opacity: 0;
+          transform: translate(-50%, -145px);
+        }
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (max-width: 720px) {
+        .drawing-toolbar {
+          flex-wrap: wrap;
+        }
+
+        .toolbar-title {
+          order: -1;
+          width: 100%;
+        }
+
+        .pen-control {
+          flex: 1;
+        }
+
+        #pen-size {
+          width: 100%;
+        }
+
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
   </head>
+
   <body>
-    <div id="obniz-debug"></div>
+    <main class="controller-shell">
+      <header class="controller-header">
+        <p class="eyebrow">Chair Person</p>
+        <h1>Controller</h1>
+        <p class="lead-copy">展示中の画像操作と、新しい絵の追加ができます。</p>
+      </header>
 
-    <div class="wrap">
+      <section class="controller-card" aria-label="展示コントロール">
+        <div class="action-grid">
+          <button class="control-button control-button--draw" id="open-drawing" type="button">
+            お絵描きモード
+            <small>iPadで描いて、そのまま展示へ転送</small>
+          </button>
 
-      <div class="buttons text-center">
-        <h3>デザインを変更する</h3>
-        <button class="btn btn-primary text-center" id="change">image change</button>
+          <button class="control-button" id="change" type="button">
+            次の画像
+            <small>image-change</small>
+          </button>
 
-        <h3>画像の更新をする</h3>
-        <button class="btn btn-primary text-center" id="fetch">fetch image</button>
+          <button class="control-button" id="fetch" type="button">
+            画像を更新
+            <small>image-fetch</small>
+          </button>
+        </div>
+
+        <p class="controller-status" id="controller-status" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <section class="drawing-mode" id="drawing-mode" aria-label="お絵描きモード" hidden>
+      <header class="drawing-toolbar">
+        <span class="toolbar-title">お絵描きモード</span>
+
+        <button class="toolbar-button" id="close-drawing" type="button">やめる</button>
+
+        <div class="pen-control">
+          <label for="pen-size">ペンの太さ</label>
+          <input id="pen-size" type="range" min="2" max="40" value="10" />
+          <output id="pen-size-value" for="pen-size">10</output>
+        </div>
+
+        <button class="toolbar-button toolbar-button--danger" id="clear-canvas" type="button">
+          全部消す
+        </button>
+      </header>
+
+      <div class="canvas-stage">
+        <canvas id="drawing-canvas" width="1536" height="2048" aria-label="黒いお絵描きキャンバス"></canvas>
       </div>
-    </div>
+
+      <footer class="drawing-footer">
+        <button class="transfer-button" id="start-transfer" type="button">転送する</button>
+      </footer>
+
+      <div
+        class="drawing-toast"
+        id="drawing-status"
+        role="status"
+        aria-live="polite"
+        aria-label="タップしてメッセージを閉じる"
+        hidden
+      ></div>
+
+      <div class="swipe-overlay" id="swipe-overlay" aria-hidden="true" hidden>
+        <button class="overlay-cancel" id="cancel-transfer" type="button">戻る</button>
+
+        <div class="swipe-content">
+          <h2 id="swipe-title">上にスワイプして転送</h2>
+          <p id="swipe-message">画面の下側から、指を上へ動かしてください。</p>
+
+          <div class="swipe-track" aria-hidden="true">
+            <div class="swipe-arrow">↑</div>
+            <div class="swipe-guide">☝︎</div>
+          </div>
+
+          <div class="upload-spinner" aria-hidden="true"></div>
+          <div class="complete-mark" aria-hidden="true">✓</div>
+        </div>
+      </div>
+    </section>
 
     <script>
-      $("#change").on('click', () => {
-        // chair personで使っているobnizにgetリクエストを送る
-        $.get("https://obniz.com/obniz/XXXX-XXXX/message?data=image-change");
-      });
+      $(() => {
+        // バケット名とobnizの送信先は、展示画面（main）側の設定と一致させる。
+        const SUPABASE_URL = 'SUPABASE_URL';
+        const SUPABASE_KEY = 'SUPABASE_KEY';
+        const STORAGE_BUCKET = 'chair-person-backrest';
+        const OBNIZ_MESSAGE_URL = 'https://obniz.com/obniz/XXXX-XXXX/message';
 
-      $("#fetch").on('click', () => {
-        // chair personで使っているobnizにgetリクエストを送る
-        $.get("https://obniz.com/obniz/XXXX-XXXX/message?data=image-fetch");
+        const drawingMode = document.getElementById('drawing-mode');
+        const canvasStage = document.querySelector('.canvas-stage');
+        const canvas = document.getElementById('drawing-canvas');
+        const context = canvas.getContext('2d', { alpha: false });
+        const penSize = document.getElementById('pen-size');
+        const penSizeValue = document.getElementById('pen-size-value');
+        const drawingStatus = document.getElementById('drawing-status');
+        const controllerStatus = document.getElementById('controller-status');
+        const swipeOverlay = document.getElementById('swipe-overlay');
+        const swipeTitle = document.getElementById('swipe-title');
+        const swipeMessage = document.getElementById('swipe-message');
+        const cancelTransferButton = document.getElementById('cancel-transfer');
+
+        let isDrawing = false;
+        let activeDrawingPointer = null;
+        let swipePointer = null;
+        let swipeStartY = 0;
+        let swipeCurrentY = 0;
+        let isUploading = false;
+        let supabaseClient = null;
+        let toastTimer = null;
+
+        resetCanvas();
+
+        $('#change').on('click', async () => {
+          await sendControllerMessage('image-change', '次の画像に切り替えました。');
+        });
+
+        $('#fetch').on('click', async () => {
+          await sendControllerMessage('image-fetch', '画像を更新しました。');
+        });
+
+        $('#open-drawing').on('click', () => {
+          drawingMode.hidden = false;
+          document.body.style.overflow = 'hidden';
+          // hidden中は描画領域の大きさが0なので、表示後のフレームで寸法を計算する。
+          window.requestAnimationFrame(fitCanvasToStage);
+          showDrawingToast('白いペンで自由に描けます。', 'info');
+        });
+
+        $('#close-drawing').on('click', closeDrawingMode);
+
+        $('#clear-canvas').on('click', () => {
+          resetCanvas();
+          showDrawingToast('キャンバスを最初の状態に戻しました。', 'info');
+        });
+
+        drawingStatus.addEventListener('click', hideDrawingToast);
+
+        penSize.addEventListener('input', () => {
+          penSizeValue.value = penSize.value;
+        });
+
+        canvas.addEventListener('pointerdown', startDrawing);
+        canvas.addEventListener('pointermove', continueDrawing);
+        canvas.addEventListener('pointerup', finishDrawing);
+        canvas.addEventListener('pointercancel', finishDrawing);
+        window.addEventListener('resize', fitCanvasToStage);
+
+        if (window.ResizeObserver) {
+          const canvasStageObserver = new ResizeObserver(fitCanvasToStage);
+          canvasStageObserver.observe(canvasStage);
+        }
+
+        $('#start-transfer').on('click', showSwipeOverlay);
+        $('#cancel-transfer').on('click', hideSwipeOverlay);
+
+        swipeOverlay.addEventListener('pointerdown', startSwipe);
+        swipeOverlay.addEventListener('pointermove', continueSwipe);
+        swipeOverlay.addEventListener('pointerup', finishSwipe);
+        swipeOverlay.addEventListener('pointercancel', cancelSwipe);
+
+        /**
+         * 1536 × 2048の内部解像度と3:4比率を保ったまま、描画領域へ収まる表示寸法を計算する。
+         * 上部ツールバーや余白を除いた実寸を基準に縮小するため、キャンバスが画面下へ
+         * はみ出さない。CSS上の表示だけを変え、保存するPNGのピクセル数は変更しない。
+         */
+        function fitCanvasToStage() {
+          const stageStyle = window.getComputedStyle(canvasStage);
+          const horizontalPadding = parseFloat(stageStyle.paddingLeft) + parseFloat(stageStyle.paddingRight);
+          const verticalPadding = parseFloat(stageStyle.paddingTop) + parseFloat(stageStyle.paddingBottom);
+          const availableWidth = canvasStage.clientWidth - horizontalPadding;
+          const availableHeight = canvasStage.clientHeight - verticalPadding;
+
+          if (availableWidth <= 0 || availableHeight <= 0) return;
+
+          const displayScale = Math.min(
+            availableWidth / canvas.width,
+            availableHeight / canvas.height,
+            1
+          );
+
+          canvas.style.width = `${Math.floor(canvas.width * displayScale)}px`;
+          canvas.style.height = `${Math.floor(canvas.height * displayScale)}px`;
+        }
+
+        /**
+         * キャンバスの全ピクセルを黒で初期化する。
+         * CSSの背景色は画像に書き出されないため、黒背景もPNGに含める目的で
+         * canvas自体を塗りつぶしている。
+         */
+        function resetCanvas() {
+          context.save();
+          context.fillStyle = '#000';
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          context.restore();
+        }
+
+        /**
+         * 画面上のポインター座標を、固定解像度（1536 × 2048）の座標へ変換する。
+         * iPadの画面サイズや向きが変わっても、位置と見た目の線幅を一致させるため、
+         * 表示倍率も一緒に返す。
+         */
+        function canvasPoint(event) {
+          const rect = canvas.getBoundingClientRect();
+          return {
+            x: (event.clientX - rect.left) * (canvas.width / rect.width),
+            y: (event.clientY - rect.top) * (canvas.height / rect.height),
+            scale: canvas.width / rect.width,
+          };
+        }
+
+        /**
+         * 指またはApple Pencilによる新しい線を開始する。
+         * pointer captureを使い、描画中にキャンバスの縁を少し外れても同じ線を
+         * 最後まで追跡できるようにする。
+         */
+        function startDrawing(event) {
+          if (isUploading) return;
+
+          event.preventDefault();
+          isDrawing = true;
+          activeDrawingPointer = event.pointerId;
+          canvas.setPointerCapture(event.pointerId);
+
+          const point = canvasPoint(event);
+          context.beginPath();
+          context.moveTo(point.x, point.y);
+          context.lineTo(point.x + 0.01, point.y + 0.01);
+          applyPen(point.scale);
+          context.stroke();
+        }
+
+        /**
+         * 現在描いている一本の線へ、移動先の座標を追加する。
+         * 別の指が画面に触れても線が飛ばないよう、開始時と同じpointerだけを扱う。
+         */
+        function continueDrawing(event) {
+          if (!isDrawing || event.pointerId !== activeDrawingPointer) return;
+
+          event.preventDefault();
+          const point = canvasPoint(event);
+          context.lineTo(point.x, point.y);
+          applyPen(point.scale);
+          context.stroke();
+        }
+
+        /**
+         * 描画中の線を終了し、次のpointerdownを新しい線として受け付けられる状態に戻す。
+         */
+        function finishDrawing(event) {
+          if (!isDrawing || event.pointerId !== activeDrawingPointer) return;
+
+          isDrawing = false;
+          activeDrawingPointer = null;
+          context.closePath();
+        }
+
+        /**
+         * 白ペンの描画設定を適用する。
+         * スライダーの値を画面上の太さとして扱い、表示倍率を掛けて書き出し画像上の
+         * 線幅へ変換する。
+         */
+        function applyPen(displayScale) {
+          context.strokeStyle = '#fff';
+          context.lineWidth = Number(penSize.value) * displayScale;
+          context.lineCap = 'round';
+          context.lineJoin = 'round';
+        }
+
+        /**
+         * お絵描きモードを閉じて通常のコントローラーへ戻る。
+         * 描きかけの内容は残し、再び開いたときに続きから描けるようにする。
+         * 転送中は処理の中断や二重操作を避けるため閉じない。
+         */
+        function closeDrawingMode() {
+          if (isUploading) return;
+
+          hideSwipeOverlay();
+          hideDrawingToast();
+          drawingMode.hidden = true;
+          document.body.style.overflow = '';
+        }
+
+        /**
+         * 転送前の確認オーバーレイを表示する。
+         * ボタンを押しただけではアップロードせず、意図的な上スワイプをもう一段階
+         * 必要にすることで、本番中の誤転送を防ぐ。
+         */
+        function showSwipeOverlay() {
+          if (isUploading) return;
+
+          swipeOverlay.hidden = false;
+          swipeOverlay.setAttribute('aria-hidden', 'false');
+          swipeOverlay.className = 'swipe-overlay';
+          swipeTitle.textContent = '上にスワイプして転送';
+          swipeMessage.textContent = '画面の下側から、指を上へ動かしてください。';
+          cancelTransferButton.disabled = false;
+          hideDrawingToast();
+        }
+
+        /**
+         * 確認オーバーレイを閉じ、途中のスワイプ状態も破棄する。
+         * ネットワーク処理の結果が確定するまでは閉じられない。
+         */
+        function hideSwipeOverlay(event) {
+          if (event) event.stopPropagation();
+          if (isUploading) return;
+
+          swipeOverlay.hidden = true;
+          swipeOverlay.setAttribute('aria-hidden', 'true');
+          cancelSwipe();
+        }
+
+        /**
+         * 上スワイプの開始位置を記録する。
+         * 「下から上へ転送する」操作を明確にするため、画面の下半分から始まった
+         * ジェスチャーだけを転送候補として扱う。
+         */
+        function startSwipe(event) {
+          if (isUploading || event.target.closest('button')) return;
+
+          const overlayRect = swipeOverlay.getBoundingClientRect();
+          const startsInLowerHalf = event.clientY > overlayRect.top + overlayRect.height * 0.48;
+
+          if (!startsInLowerHalf) {
+            swipeMessage.textContent = 'もう少し下からスワイプしてください。';
+            return;
+          }
+
+          event.preventDefault();
+          swipePointer = event.pointerId;
+          swipeStartY = event.clientY;
+          swipeCurrentY = event.clientY;
+          swipeOverlay.setPointerCapture(event.pointerId);
+          swipeOverlay.classList.add('is-dragging');
+        }
+
+        /**
+         * スワイプ距離を追跡し、指のガイドと案内文へ進行状況を反映する。
+         */
+        function continueSwipe(event) {
+          if (event.pointerId !== swipePointer) return;
+
+          event.preventDefault();
+          swipeCurrentY = event.clientY;
+          const distance = Math.max(0, swipeStartY - swipeCurrentY);
+          swipeOverlay.style.setProperty('--drag-offset', `${-Math.min(distance, 170)}px`);
+          swipeMessage.textContent = distance > 80 ? 'そのまま上へ！' : '上へスワイプしてください。';
+        }
+
+        /**
+         * スワイプ終了時に移動距離を判定し、十分に上へ動いた場合だけ転送を開始する。
+         * 小さい画面でも操作可能になるよう、しきい値は画面高に合わせつつ上限を設ける。
+         */
+        function finishSwipe(event) {
+          if (event.pointerId !== swipePointer) return;
+
+          const overlayRect = swipeOverlay.getBoundingClientRect();
+          const requiredDistance = Math.min(190, overlayRect.height * 0.24);
+          const distance = swipeStartY - swipeCurrentY;
+          cancelSwipe();
+
+          if (distance >= requiredDistance) {
+            uploadDrawing();
+          } else {
+            swipeMessage.textContent = 'もう少し大きく、下から上へスワイプしてください。';
+          }
+        }
+
+        /**
+         * 未完了またはキャンセルされたスワイプの一時状態を初期化する。
+         * 次の操作に前回の移動量やアニメーション位置を持ち越さないために使用する。
+         */
+        function cancelSwipe() {
+          swipePointer = null;
+          swipeStartY = 0;
+          swipeCurrentY = 0;
+          swipeOverlay.classList.remove('is-dragging');
+          swipeOverlay.style.removeProperty('--drag-offset');
+        }
+
+        /**
+         * キャンバスをPNGへ変換してSupabaseへ保存し、保存成功後にimage-fetchを送る。
+         * 展示画面へ存在しない画像を通知しないよう、アップロードと通知は必ずこの順で行う。
+         * 保存後の通知だけ失敗した場合は再アップロードせず、手動更新を案内する。
+         */
+        async function uploadDrawing() {
+          if (isUploading) return;
+
+          let objectName = '';
+
+          isUploading = true;
+          cancelTransferButton.disabled = true;
+          swipeOverlay.className = 'swipe-overlay is-uploading';
+          swipeTitle.textContent = '転送しています';
+          swipeMessage.textContent = '画像の保存が終わるまで、そのままお待ちください。';
+
+          try {
+            const imageBlob = await canvasToBlob(canvas);
+            objectName = createObjectName();
+            const { error } = await getSupabaseClient().storage
+              .from(STORAGE_BUCKET)
+              .upload(objectName, imageBlob, {
+                cacheControl: '3600',
+                contentType: 'image/png',
+                upsert: false,
+              });
+
+            if (error) throw error;
+
+            try {
+              await sendObnizMessage('image-fetch');
+              showTransferResult(
+                '転送できました',
+                '最新の画像に切り替えました。',
+                '画像を転送し、展示を最新の画像に切り替えました。',
+                'success'
+              );
+            } catch (messageError) {
+              console.error('image-fetch送信エラー:', messageError);
+              showTransferResult(
+                '画像を転送しました',
+                '切り替え通知だけ失敗しました。「画像を更新」を押してください。',
+                '画像は転送済みですが、切り替え通知に失敗しました。',
+                'error'
+              );
+            }
+          } catch (uploadError) {
+            // 認証情報は含めず、Supabaseが返す診断情報と転送対象だけを記録する。
+            const errorDetails = uploadError && typeof uploadError === 'object' ? uploadError : {};
+            const errorMessage = formatTransferError(uploadError);
+            console.log('画像転送エラー詳細:', {
+              name: errorDetails.name || null,
+              message: errorDetails.message || String(uploadError),
+              status: errorDetails.status || null,
+              statusCode: errorDetails.statusCode || null,
+              code: errorDetails.code || null,
+              bucket: STORAGE_BUCKET,
+              objectName: objectName || null,
+              error: uploadError,
+            });
+            isUploading = false;
+            cancelTransferButton.disabled = false;
+            swipeOverlay.className = 'swipe-overlay';
+            swipeTitle.textContent = '転送できませんでした';
+            swipeMessage.textContent = errorMessage;
+            showDrawingToast(`転送エラー\n${errorMessage}`, 'error', 10000);
+          }
+        }
+
+        /**
+         * 転送結果を一定時間表示し、完了後に操作ロックとオーバーレイを解除する。
+         * お絵描きモード自体は閉じず、描いた内容を残したまま次の操作へ戻す。
+         */
+        function showTransferResult(title, message, statusMessage, statusState) {
+          swipeOverlay.className = 'swipe-overlay is-complete';
+          swipeTitle.textContent = title;
+          swipeMessage.textContent = message;
+
+          window.setTimeout(() => {
+            isUploading = false;
+            cancelTransferButton.disabled = false;
+            hideSwipeOverlay();
+            showDrawingToast(statusMessage, statusState, statusState === 'error' ? 8000 : 3500);
+          }, 1600);
+        }
+
+        /**
+         * Supabaseやブラウザから返されたエラーを、画面上で読める短い診断文へ変換する。
+         * メッセージに加えてstatusとcodeも表示し、権限・認証・通信のどこで
+         * 失敗したかを判断できるようにする。
+         */
+        function formatTransferError(error) {
+          const details = error && typeof error === 'object' ? error : {};
+          const parts = [details.message || String(error) || '詳細不明のエラーです。'];
+
+          if (details.status || details.statusCode) {
+            parts.push(`status: ${details.status || details.statusCode}`);
+          }
+
+          if (details.code) {
+            parts.push(`code: ${details.code}`);
+          }
+
+          return parts.join(' / ');
+        }
+
+        /**
+         * お絵描き画面の通知をトーストとして一定時間だけ表示する。
+         * 新しい通知が来た場合は古いタイマーを破棄し、最新の内容を優先する。
+         * durationを0にすると、タップされるまで表示を維持する。
+         */
+        function showDrawingToast(message, state, duration = 3200) {
+          window.clearTimeout(toastTimer);
+          drawingStatus.textContent = message;
+          drawingStatus.dataset.state = state;
+          drawingStatus.hidden = false;
+
+          if (duration > 0) {
+            toastTimer = window.setTimeout(hideDrawingToast, duration);
+          }
+        }
+
+        /**
+         * 表示中のトーストと自動非表示タイマーを破棄する。
+         * トースト自体のタップでも呼ばれるため、利用者は待たずに閉じられる。
+         */
+        function hideDrawingToast() {
+          window.clearTimeout(toastTimer);
+          toastTimer = null;
+          drawingStatus.hidden = true;
+        }
+
+        /**
+         * callback形式のcanvas.toBlobを、転送処理からawaitできるPromiseへ変換する。
+         * ブラウザが画像を生成できずnullを返した場合は、アップロード前の失敗として扱う。
+         */
+        function canvasToBlob(targetCanvas) {
+          return new Promise((resolve, reject) => {
+            targetCanvas.toBlob((blob) => {
+              if (blob) {
+                resolve(blob);
+              } else {
+                reject(new Error('キャンバスを画像に変換できませんでした。'));
+              }
+            }, 'image/png');
+          });
+        }
+
+        /**
+         * 新規アップロード専用のオブジェクト名を生成する。
+         * 時刻とランダム文字列を含め、既存作品の上書きと同名URLのキャッシュを避ける。
+         */
+        function createObjectName() {
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const randomPart = Math.random().toString(36).slice(2, 9);
+          return `drawing-${timestamp}-${randomPart}.png`;
+        }
+
+        /**
+         * Supabaseクライアントを初回転送時にだけ生成し、以降は同じ接続設定を再利用する。
+         * お絵描きや既存のobniz操作を、Storage接続の準備より先に使えるよう遅延初期化する。
+         */
+        function getSupabaseClient() {
+          if (!supabaseClient) {
+            if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+              throw new Error('Supabase SDKを読み込めませんでした。');
+            }
+
+            if (SUPABASE_URL === 'SUPABASE_URL' || SUPABASE_KEY === 'SUPABASE_KEY') {
+              throw new Error('controller側のSupabase URLまたはKeyが未設定です。');
+            }
+
+            supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+          }
+
+          return supabaseClient;
+        }
+
+        /**
+         * 通常コントローラーからのobnizメッセージ送信と、ボタン・結果表示をまとめて扱う。
+         * 送信中は対象ボタンだけを無効化し、同じ命令の連打を防ぐ。
+         */
+        async function sendControllerMessage(message, successMessage) {
+          const button = message === 'image-change' ? $('#change') : $('#fetch');
+          button.prop('disabled', true);
+          setControllerStatus('送信しています…', 'loading');
+
+          try {
+            await sendObnizMessage(message);
+            setControllerStatus(successMessage, 'success');
+          } catch (error) {
+            console.error(`${message}送信エラー:`, error);
+            setControllerStatus('メッセージを送信できませんでした。', 'error');
+          } finally {
+            button.prop('disabled', false);
+          }
+        }
+
+        /**
+         * obnizのMessage APIへのGETリクエストをPromiseとして返す。
+         * 呼び出し側が送信完了を待ってから成功表示や次の処理へ進める形にしている。
+         */
+        function sendObnizMessage(message) {
+          return new Promise((resolve, reject) => {
+            $.get(OBNIZ_MESSAGE_URL, { data: message })
+              .done(resolve)
+              .fail(reject);
+          });
+        }
+
+        /**
+         * 通常コントローラーの案内文と表示状態を同時に更新する。
+         * data-stateは成功・失敗に応じた色分けに使用する。
+         */
+        function setControllerStatus(message, state) {
+          controllerStatus.textContent = message;
+          controllerStatus.dataset.state = state;
+        }
       });
     </script>
   </body>
