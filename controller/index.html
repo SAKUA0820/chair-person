@@ -15,10 +15,20 @@
     <style>
       :root {
         color-scheme: light;
-        --ink: #181818;
-        --muted: #6e6e73;
-        --panel: rgba(255, 255, 255, 0.86);
-        --accent: #246bfe;
+        --ink: #25232a;
+        --muted: #746e78;
+        --panel: #fff;
+        --accent: #a47dbc;
+        --soft-pink: #fffafd;
+        --accent-gradient: linear-gradient(
+          100deg,
+          #aaaef3 0%,
+          #d9a7df 22%,
+          #efa9cf 43%,
+          #f4ddd3 60%,
+          #e7a5d5 80%,
+          #aeb5f7 100%
+        );
         --danger: #c92a2a;
       }
 
@@ -31,8 +41,8 @@
         margin: 0;
         color: var(--ink);
         background:
-          radial-gradient(circle at top left, #eef4ff 0, transparent 38%),
-          linear-gradient(160deg, #f8f8f5, #e7e7e2);
+          var(--accent-gradient) top / 100% 7px no-repeat,
+          #faf9f7;
         font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
       }
 
@@ -48,23 +58,35 @@
       }
 
       .controller-header {
-        margin-bottom: 24px;
+        margin-bottom: 22px;
+        padding: 0 4px;
       }
 
       .eyebrow {
         margin: 0 0 6px;
-        color: var(--accent);
-        font-size: 0.78rem;
-        font-weight: 800;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
+        color: #896f96;
+        font-size: 0.9rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+
+      .controller-title-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
       }
 
       h1 {
         margin: 0;
         font-size: clamp(2rem, 6vw, 3.25rem);
-        font-weight: 800;
-        letter-spacing: -0.04em;
+        font-weight: 750;
+        letter-spacing: -0.035em;
+      }
+
+      .controller-mark {
+        width: clamp(58px, 12vw, 82px);
+        height: auto;
+        filter: drop-shadow(0 5px 6px rgba(74, 66, 82, 0.13));
       }
 
       .lead-copy {
@@ -74,11 +96,10 @@
 
       .controller-card {
         padding: 22px;
-        border: 1px solid rgba(255, 255, 255, 0.72);
-        border-radius: 24px;
+        border: 1px solid #ded8df;
+        border-radius: 16px;
         background: var(--panel);
-        box-shadow: 0 18px 55px rgba(35, 39, 47, 0.12);
-        backdrop-filter: blur(18px);
+        box-shadow: 0 8px 24px rgba(66, 57, 72, 0.08);
       }
 
       .action-grid {
@@ -90,14 +111,14 @@
       .control-button {
         min-height: 78px;
         padding: 14px 16px;
-        border: 0;
-        border-radius: 17px;
-        color: #fff;
-        background: #28282b;
+        border: 1px solid #d9d3da;
+        border-radius: 11px;
+        color: var(--ink);
+        background: #fff;
         font-size: 1rem;
-        font-weight: 750;
-        box-shadow: 0 7px 16px rgba(0, 0, 0, 0.14);
-        transition: transform 140ms ease, filter 140ms ease;
+        font-weight: 700;
+        box-shadow: 0 3px 9px rgba(61, 51, 68, 0.07);
+        transition: transform 140ms ease, background-color 140ms ease;
       }
 
       .control-button:active {
@@ -111,8 +132,12 @@
       .control-button--draw {
         grid-column: 1 / -1;
         min-height: 98px;
-        background: var(--accent);
+        border: 2px solid transparent;
+        background:
+          linear-gradient(var(--soft-pink), var(--soft-pink)) padding-box,
+          var(--accent-gradient) border-box;
         font-size: 1.15rem;
+        box-shadow: 0 5px 14px rgba(177, 126, 172, 0.13);
       }
 
       .control-button small {
@@ -126,9 +151,9 @@
       .threshold-panel {
         margin-top: 18px;
         padding: 18px;
-        border: 1px solid rgba(36, 107, 254, 0.14);
-        border-radius: 18px;
-        background: rgba(242, 246, 255, 0.78);
+        border: 1px solid #e2dbe2;
+        border-radius: 12px;
+        background: #fbf8fa;
       }
 
       .threshold-heading {
@@ -156,8 +181,9 @@
         flex: 0 0 auto;
         padding: 6px 10px;
         border-radius: 999px;
-        color: #1f5bd1;
-        background: #e2ebff;
+        border: 1px solid #e4cfe1;
+        color: #765980;
+        background: #f6eaf3;
         font-size: 0.78rem;
         font-weight: 800;
         font-variant-numeric: tabular-nums;
@@ -174,8 +200,8 @@
         display: grid;
         grid-template-columns: minmax(0, 1fr) 58px;
         min-width: 0;
-        border: 1px solid #c8d3e8;
-        border-radius: 14px;
+        border: 1px solid #d8d0d9;
+        border-radius: 10px;
         background: #fff;
         overflow: hidden;
       }
@@ -201,42 +227,42 @@
       }
 
       #sensor-threshold:focus {
-        outline: 3px solid rgba(36, 107, 254, 0.2);
+        outline: 3px solid rgba(207, 149, 198, 0.25);
         outline-offset: -3px;
       }
 
       .threshold-step-buttons {
         display: grid;
         grid-template-rows: 1fr 1fr;
-        border-left: 1px solid #d9e0ed;
+        border-left: 1px solid #e2d9e1;
       }
 
       .threshold-step-button {
         min-width: 58px;
         padding: 0;
         border: 0;
-        color: #244f9b;
-        background: #edf3ff;
+        color: #705b79;
+        background: #f7f1f6;
         font-size: 0.92rem;
         line-height: 1;
       }
 
       .threshold-step-button + .threshold-step-button {
-        border-top: 1px solid #d9e0ed;
+        border-top: 1px solid #e2d9e1;
       }
 
       .threshold-step-button:active {
-        background: #d9e6ff;
+        background: #eee2ec;
       }
 
       .threshold-update-button {
-        border: 0;
-        border-radius: 14px;
-        color: #fff;
-        background: var(--accent);
+        border: 1px solid #e4cadb;
+        border-radius: 10px;
+        color: #342c37;
+        background: var(--soft-pink);
         font-size: 1rem;
         font-weight: 800;
-        box-shadow: 0 6px 14px rgba(36, 107, 254, 0.24);
+        box-shadow: 0 3px 8px rgba(169, 118, 163, 0.1);
       }
 
       .threshold-update-button:active {
@@ -721,19 +747,22 @@
     <main class="controller-shell">
       <header class="controller-header">
         <p class="eyebrow">Chair Person</p>
-        <h1>Controller</h1>
+        <div class="controller-title-row">
+          <h1>Controller</h1>
+          <img class="controller-mark" src="./chair-person.png" alt="Chair Personの椅子" />
+        </div>
         <p class="lead-copy">展示中の画像操作と、新しい絵の追加ができます。</p>
       </header>
 
-      <section class="controller-card" aria-label="展示コントロール">
+      <section class="controller-card" aria-label="ChairPersonコントローラ">
         <div class="action-grid">
           <button class="control-button control-button--draw" id="open-drawing" type="button">
             お絵描きモード
-            <small>iPadで描いて、そのまま展示へ転送</small>
+            <small>お絵描きしたイラストがChairPersonのデザインに</small>
           </button>
 
           <button class="control-button" id="change" type="button">
-            次の画像
+            次の画像へ
             <small>image-change</small>
           </button>
 
@@ -805,16 +834,16 @@
         </div>
 
         <button class="toolbar-button toolbar-button--danger" id="clear-canvas" type="button">
-          全部消す
+          全消去
         </button>
       </header>
 
       <div class="canvas-stage">
-        <canvas id="drawing-canvas" width="1536" height="2048" aria-label="黒いお絵描きキャンバス"></canvas>
+        <canvas id="drawing-canvas" width="1536" height="2048" aria-label="キャンバス"></canvas>
       </div>
 
       <footer class="drawing-footer">
-        <button class="transfer-button" id="start-transfer" type="button">転送する</button>
+        <button class="transfer-button" id="start-transfer" type="button">ChairPersonに転送</button>
       </footer>
 
       <div
@@ -822,7 +851,7 @@
         id="drawing-status"
         role="status"
         aria-live="polite"
-        aria-label="タップしてメッセージを閉じる"
+        aria-label="タップして閉じる"
         hidden
       ></div>
 
@@ -831,14 +860,14 @@
 
         <div class="swipe-content">
           <h2 id="swipe-title">上にスワイプして転送</h2>
-          <p id="swipe-message">下の絵を指でつかんで、上へ動かしてください。</p>
+          <p id="swipe-message">描いたイラストをしたから上にスワイプ！</p>
 
           <div class="swipe-track" aria-hidden="true">
             <div class="swipe-arrow">↑</div>
-            <div class="swipe-destination">ここまで動かすと転送します</div>
+            <div class="swipe-destination">ここまで動かすと転送</div>
             <div class="swipe-preview-card" id="swipe-preview">
               <canvas id="swipe-preview-canvas" width="192" height="256"></canvas>
-              <span class="swipe-preview-label">この絵をつかんで上へ</span>
+              <span class="swipe-preview-label">この絵をスワイプして上へ</span>
             </div>
             <div class="swipe-guide">☝︎</div>
           </div>
