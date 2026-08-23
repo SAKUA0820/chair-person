@@ -17,7 +17,11 @@ $( async () => {
   const supabaseKey = 'SUPABASE_KEY';
   const { createClient } = supabase;
   const supabaseClient = createClient(supabaseUrl, supabaseKey);
+  const FALLBACK_IMAGES = ['./tie_black.jpg', './glass_black.jpg', './scurf_black.jpg'];
+  // 2なら、優先画像はほかの各画像の2倍の確率で選ばれる。
+  const PREFERRED_IMAGE_WEIGHT = 2;
   let IMAGES = [];
+  let preferredImageIndex = 0;
 
   const SENSOR_THRESHOLD_DEFAULT = 0.5;
   const SENSOR_THRESHOLD_MIN = 0;
@@ -110,8 +114,11 @@ $( async () => {
       if(hasBeenFullyShown && hasBeenFullyHidden){
         hasBeenFullyShown = false;
         hasBeenFullyHidden = false;
-        let nextImgIndex = Math.floor(Math.random() * IMAGES.length);
-        changeImage(nextImgIndex);
+        const nextImgIndex = chooseRandomImageIndex();
+
+        if (nextImgIndex !== null) {
+          changeImage(nextImgIndex);
+        }
       } 
       
    }, 200);
@@ -137,16 +144,45 @@ $( async () => {
       .from('chair-person-backrest')
       .list('', { sortBy: { column: 'created_at', order: 'desc' } });
 
-    if (error) {
-      console.error('画像取得エラー:', error);
-      return ['./tie_black.jpg', './glass_black.jpg', './scurf_black.jpg'];
+    if (error || data.length === 0) {
+      if (error) {
+        console.error('画像取得エラー:', error);
+      } else {
+        console.warn('Supabaseに表示できる画像がありません。');
+      }
+
+      // Supabase画像を使えないときは、フォールバック画像のネクタイを優先する。
+      preferredImageIndex = 0;
+      return FALLBACK_IMAGES;
     }
 
     const images = data.map(file =>
       `${supabaseUrl}/storage/v1/object/public/chair-person-backrest/${file.name}`
     );
 
+    // created_atの降順で取得しているため、配列の末尾が一番古い画像になる。
+    preferredImageIndex = Math.max(images.length - 1, 0);
     return images;
+  }
+
+  /**
+   * 優先画像に追加の抽選枠を与えつつ、表示する画像のインデックスをランダムに返す。
+   * Supabase取得時は最古画像、取得失敗時はtie_black.jpgが優先画像になる。
+   */
+  function chooseRandomImageIndex() {
+    if (IMAGES.length === 0) return null;
+
+    const slotCount = IMAGES.length + PREFERRED_IMAGE_WEIGHT - 1;
+    const selectedSlot = Math.floor(Math.random() * slotCount);
+
+    if (selectedSlot < PREFERRED_IMAGE_WEIGHT) {
+      return preferredImageIndex;
+    }
+
+    const otherImageIndex = selectedSlot - PREFERRED_IMAGE_WEIGHT;
+    return otherImageIndex >= preferredImageIndex
+      ? otherImageIndex + 1
+      : otherImageIndex;
   }
 
   /**
