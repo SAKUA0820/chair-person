@@ -19,6 +19,13 @@ $( async () => {
   const supabaseClient = createClient(supabaseUrl, supabaseKey);
   let IMAGES = [];
 
+  const SENSOR_THRESHOLD_DEFAULT = 0.5;
+  const SENSOR_THRESHOLD_MIN = 0;
+  const SENSOR_THRESHOLD_MAX = 5;
+  const SENSOR_THRESHOLD_UPDATE_PREFIX = 'sensor-threshold-update:';
+  const OBNIZ_ID = 'OBNIZ_ID_HERE';
+  let sensorThreshold = SENSOR_THRESHOLD_DEFAULT;
+
   // フラグ系
   let currentImg = 0;
   let touchCount = 0;
@@ -34,13 +41,15 @@ $( async () => {
     $('img').attr('src', IMAGES[0]);
   }
 
-	let obniz = new Obniz('OBNIZ_ID_HERE');
+	let obniz = new Obniz(OBNIZ_ID);
   console.log(obniz.connectionState)
 	
 	obniz.onconnect = async () => {
 
     obniz.onmessage = async (message, from) => {
-      if (message === "image-change") {
+      if (handleSensorThresholdUpdateMessage(message)) {
+        return;
+      } else if (message === "image-change") {
         // 画像変更のメッセージを受け取ったら変更する
         changeImg();
       } else if (message === "image-fetch") {
@@ -72,7 +81,7 @@ $( async () => {
       rightRef = await obniz.ad0.getWait();
       console.log(leftRef + ',' + rightRef);
       
-      if((leftRef < 0.5) || (rightRef < 0.5)){
+      if((leftRef < sensorThreshold) || (rightRef < sensorThreshold)){
         //opacityを少しずつ足していく
         opacity += 0.2;
         //opacity1以上なら1にする
@@ -138,6 +147,49 @@ $( async () => {
     );
 
     return images;
+  }
+
+  /**
+   * controllerから届いた閾値更新イベントを、mainが判定に使う変数へ適用する。
+   * 既存の画像操作メッセージと区別できる接頭辞を使い、不正な値では現在値を
+   * 上書きしない。閾値更新イベントであれば、値が不正な場合もtrueを返す。
+   */
+  function handleSensorThresholdUpdateMessage(message) {
+    if (typeof message !== 'string' || !message.startsWith(SENSOR_THRESHOLD_UPDATE_PREFIX)) {
+      return false;
+    }
+
+    const receivedValue = message.slice(SENSOR_THRESHOLD_UPDATE_PREFIX.length);
+    const nextThreshold = normalizeSensorThreshold(receivedValue);
+
+    if (nextThreshold === null) {
+      console.warn('無効なセンサー閾値を受信しました:', receivedValue);
+      return true;
+    }
+
+    sensorThreshold = nextThreshold;
+    console.log(`センサー閾値を${sensorThreshold.toFixed(1)}に更新しました。`);
+    return true;
+  }
+
+  /**
+   * 閾値をAD入力の範囲内に限定し、画面表示と判定で共通の小数1桁へ丸める。
+   * 数値へ変換できない値や範囲外の値はnullにして、呼び出し側で拒否できるようにする。
+   */
+  function normalizeSensorThreshold(value) {
+    if (typeof value === 'string' && value.trim() === '') return null;
+
+    const numericValue = Number(value);
+
+    if (
+      !Number.isFinite(numericValue) ||
+      numericValue < SENSOR_THRESHOLD_MIN ||
+      numericValue > SENSOR_THRESHOLD_MAX
+    ) {
+      return null;
+    }
+
+    return Math.round(numericValue * 10) / 10;
   }
 
   // 順番に画像を変える

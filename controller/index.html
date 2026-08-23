@@ -123,6 +123,132 @@
         opacity: 0.76;
       }
 
+      .threshold-panel {
+        margin-top: 18px;
+        padding: 18px;
+        border: 1px solid rgba(36, 107, 254, 0.14);
+        border-radius: 18px;
+        background: rgba(242, 246, 255, 0.78);
+      }
+
+      .threshold-heading {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 14px;
+      }
+
+      .threshold-heading h2 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 800;
+      }
+
+      .threshold-heading p {
+        margin: 5px 0 0;
+        color: var(--muted);
+        font-size: 0.8rem;
+        line-height: 1.45;
+      }
+
+      .threshold-current {
+        flex: 0 0 auto;
+        padding: 6px 10px;
+        border-radius: 999px;
+        color: #1f5bd1;
+        background: #e2ebff;
+        font-size: 0.78rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      .threshold-editor {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 112px;
+        gap: 10px;
+      }
+
+      .threshold-value-control {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 58px;
+        min-width: 0;
+        border: 1px solid #c8d3e8;
+        border-radius: 14px;
+        background: #fff;
+        overflow: hidden;
+      }
+
+      #sensor-threshold {
+        width: 100%;
+        min-width: 0;
+        padding: 10px 14px;
+        border: 0;
+        color: #202124;
+        background: transparent;
+        font-size: 1.75rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        text-align: center;
+        appearance: textfield;
+      }
+
+      #sensor-threshold::-webkit-inner-spin-button,
+      #sensor-threshold::-webkit-outer-spin-button {
+        margin: 0;
+        appearance: none;
+      }
+
+      #sensor-threshold:focus {
+        outline: 3px solid rgba(36, 107, 254, 0.2);
+        outline-offset: -3px;
+      }
+
+      .threshold-step-buttons {
+        display: grid;
+        grid-template-rows: 1fr 1fr;
+        border-left: 1px solid #d9e0ed;
+      }
+
+      .threshold-step-button {
+        min-width: 58px;
+        padding: 0;
+        border: 0;
+        color: #244f9b;
+        background: #edf3ff;
+        font-size: 0.92rem;
+        line-height: 1;
+      }
+
+      .threshold-step-button + .threshold-step-button {
+        border-top: 1px solid #d9e0ed;
+      }
+
+      .threshold-step-button:active {
+        background: #d9e6ff;
+      }
+
+      .threshold-update-button {
+        border: 0;
+        border-radius: 14px;
+        color: #fff;
+        background: var(--accent);
+        font-size: 1rem;
+        font-weight: 800;
+        box-shadow: 0 6px 14px rgba(36, 107, 254, 0.24);
+      }
+
+      .threshold-update-button:active {
+        transform: scale(0.97);
+      }
+
+      .threshold-step-button:disabled,
+      .threshold-update-button:disabled,
+      #sensor-threshold:disabled {
+        opacity: 0.52;
+      }
+
       .controller-status {
         min-height: 1.5em;
         margin: 15px 4px 0;
@@ -559,6 +685,25 @@
 
       }
 
+      @media (max-width: 460px) {
+        .threshold-heading {
+          display: block;
+        }
+
+        .threshold-current {
+          display: inline-block;
+          margin-top: 10px;
+        }
+
+        .threshold-editor {
+          grid-template-columns: 1fr;
+        }
+
+        .threshold-update-button {
+          min-height: 52px;
+        }
+      }
+
       @media (prefers-reduced-motion: reduce) {
         *,
         *::before,
@@ -597,6 +742,49 @@
             <small>image-fetch</small>
           </button>
         </div>
+
+        <section class="threshold-panel" aria-labelledby="threshold-title">
+          <div class="threshold-heading">
+            <div>
+              <h2 id="threshold-title">センサー閾値</h2>
+              <p>左右どちらかのセンサー値が、この値を下回ると画像を表示します。</p>
+            </div>
+            <span class="threshold-current" id="threshold-current">現在 0.5</span>
+          </div>
+
+          <div class="threshold-editor">
+            <div class="threshold-value-control">
+              <input
+                id="sensor-threshold"
+                type="number"
+                min="0"
+                max="5"
+                step="0.1"
+                value="0.5"
+                inputmode="decimal"
+                aria-label="センサー閾値"
+              />
+              <div class="threshold-step-buttons">
+                <button
+                  class="threshold-step-button"
+                  id="increase-threshold"
+                  type="button"
+                  aria-label="閾値を0.1上げる"
+                >▲</button>
+                <button
+                  class="threshold-step-button"
+                  id="decrease-threshold"
+                  type="button"
+                  aria-label="閾値を0.1下げる"
+                >▼</button>
+              </div>
+            </div>
+
+            <button class="threshold-update-button" id="update-threshold" type="button">
+              更新
+            </button>
+          </div>
+        </section>
 
         <p class="controller-status" id="controller-status" role="status" aria-live="polite"></p>
       </section>
@@ -668,6 +856,11 @@
         const SUPABASE_KEY = 'SUPABASE_KEY';
         const STORAGE_BUCKET = 'chair-person-backrest';
         const OBNIZ_MESSAGE_URL = 'https://obniz.com/obniz/XXXX-XXXX/message';
+        const SENSOR_THRESHOLD_DEFAULT = 0.5;
+        const SENSOR_THRESHOLD_MIN = 0;
+        const SENSOR_THRESHOLD_MAX = 5;
+        const SENSOR_THRESHOLD_STEP = 0.1;
+        const SENSOR_THRESHOLD_UPDATE_PREFIX = 'sensor-threshold-update:';
 
         const drawingMode = document.getElementById('drawing-mode');
         const canvasStage = document.querySelector('.canvas-stage');
@@ -677,6 +870,11 @@
         const penSizeValue = document.getElementById('pen-size-value');
         const drawingStatus = document.getElementById('drawing-status');
         const controllerStatus = document.getElementById('controller-status');
+        const sensorThresholdInput = document.getElementById('sensor-threshold');
+        const currentThresholdLabel = document.getElementById('threshold-current');
+        const increaseThresholdButton = document.getElementById('increase-threshold');
+        const decreaseThresholdButton = document.getElementById('decrease-threshold');
+        const updateThresholdButton = document.getElementById('update-threshold');
         const swipeOverlay = document.getElementById('swipe-overlay');
         const swipeTitle = document.getElementById('swipe-title');
         const swipeMessage = document.getElementById('swipe-message');
@@ -693,7 +891,9 @@
         let isUploading = false;
         let supabaseClient = null;
         let toastTimer = null;
+        let currentSensorThreshold = SENSOR_THRESHOLD_DEFAULT;
 
+        renderSensorThreshold(currentSensorThreshold);
         resetCanvas();
 
         $('#change').on('click', async () => {
@@ -703,6 +903,24 @@
         $('#fetch').on('click', async () => {
           await sendControllerMessage('image-fetch', '画像を更新しました。');
         });
+
+        increaseThresholdButton.addEventListener('click', () => {
+          adjustSensorThreshold(SENSOR_THRESHOLD_STEP);
+        });
+
+        decreaseThresholdButton.addEventListener('click', () => {
+          adjustSensorThreshold(-SENSOR_THRESHOLD_STEP);
+        });
+
+        sensorThresholdInput.addEventListener('change', normalizeSensorThresholdInput);
+        sensorThresholdInput.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter') return;
+
+          event.preventDefault();
+          updateSensorThreshold();
+        });
+
+        updateThresholdButton.addEventListener('click', updateSensorThreshold);
 
         $('#open-drawing').on('click', () => {
           drawingMode.hidden = false;
@@ -1178,6 +1396,121 @@
           }
 
           return supabaseClient;
+        }
+
+        /**
+         * 入力欄の値を0.1増減し、0.0〜5.0の範囲へ収める。
+         * 未入力や不正な文字列の場合は、controllerで最後に送信した値を基準にする。
+         * ここではまだ送信せず、「更新」が押されるまで現在値の表示は変えない。
+         */
+        function adjustSensorThreshold(amount) {
+          const enteredValue = normalizeSensorThreshold(sensorThresholdInput.value);
+          const baseValue = enteredValue ?? currentSensorThreshold;
+          const adjustedValue = Math.min(
+            SENSOR_THRESHOLD_MAX,
+            Math.max(SENSOR_THRESHOLD_MIN, baseValue + amount)
+          );
+          const normalizedValue = normalizeSensorThreshold(adjustedValue);
+
+          sensorThresholdInput.value = normalizedValue.toFixed(1);
+        }
+
+        /**
+         * 手入力が終わった時点で値を検証し、表示を必ず小数1桁へ揃える。
+         * 範囲外や空欄は送信候補に残さず、最後に確定した現在値へ戻す。
+         */
+        function normalizeSensorThresholdInput() {
+          const normalizedValue = normalizeSensorThreshold(sensorThresholdInput.value);
+
+          if (normalizedValue === null) {
+            sensorThresholdInput.value = currentSensorThreshold.toFixed(1);
+            setControllerStatus('閾値は0.0〜5.0の範囲で入力してください。', 'error');
+            return;
+          }
+
+          sensorThresholdInput.value = normalizedValue.toFixed(1);
+        }
+
+        /**
+         * 入力中の閾値を、既存のHTTP Message API経由でmainへ一方向に送る。
+         * 送信が成功した値をcontroller側の現在値として表示し、Obnizへ常時接続しない。
+         */
+        async function updateSensorThreshold() {
+          const nextThreshold = normalizeSensorThreshold(sensorThresholdInput.value);
+
+          if (nextThreshold === null) {
+            sensorThresholdInput.value = currentSensorThreshold.toFixed(1);
+            setControllerStatus('閾値は0.0〜5.0の範囲で入力してください。', 'error');
+            return;
+          }
+
+          setThresholdControlsDisabled(true);
+          setControllerStatus('センサー閾値を送信しています…', 'loading');
+
+          try {
+            await sendObnizMessage(createSensorThresholdUpdateMessage(nextThreshold));
+            currentSensorThreshold = nextThreshold;
+            renderSensorThreshold(currentSensorThreshold);
+            setControllerStatus(
+              `センサー閾値を${currentSensorThreshold.toFixed(1)}に更新しました。`,
+              'success'
+            );
+          } catch (error) {
+            console.error('センサー閾値送信エラー:', error);
+            renderSensorThreshold(currentSensorThreshold);
+            setControllerStatus('センサー閾値を送信できませんでした。', 'error');
+          } finally {
+            setThresholdControlsDisabled(false);
+          }
+        }
+
+        /**
+         * 閾値をAD入力の範囲内に限定し、送信・表示・判定で共通の小数1桁へ丸める。
+         * 空欄、数値でない入力、範囲外の値はnullにして更新処理で拒否する。
+         */
+        function normalizeSensorThreshold(value) {
+          if (typeof value === 'string' && value.trim() === '') return null;
+
+          const numericValue = Number(value);
+
+          if (
+            !Number.isFinite(numericValue) ||
+            numericValue < SENSOR_THRESHOLD_MIN ||
+            numericValue > SENSOR_THRESHOLD_MAX
+          ) {
+            return null;
+          }
+
+          return Math.round(numericValue * 10) / 10;
+        }
+
+        /**
+         * mainのonmessageが更新イベントと値を分けて読める文字列を組み立てる。
+         * 既存のimage系イベントと同じ文字列形式に揃え、値だけを接頭辞の後ろへ付ける。
+         */
+        function createSensorThresholdUpdateMessage(value) {
+          return `${SENSOR_THRESHOLD_UPDATE_PREFIX}${value.toFixed(1)}`;
+        }
+
+        /**
+         * 確定した現在値を入力欄とラベルへ同時に反映する。
+         * 初期表示、更新成功、送信失敗からの復帰で表示が食い違わないよう共通化している。
+         */
+        function renderSensorThreshold(value) {
+          const displayValue = value.toFixed(1);
+          sensorThresholdInput.value = displayValue;
+          currentThresholdLabel.textContent = `現在 ${displayValue}`;
+        }
+
+        /**
+         * 閾値の送信中だけ入力と関連ボタンをまとめて無効化する。
+         * 送信途中の編集や連打によって、画面表示と送信値の順序が入れ替わるのを防ぐ。
+         */
+        function setThresholdControlsDisabled(disabled) {
+          sensorThresholdInput.disabled = disabled;
+          increaseThresholdButton.disabled = disabled;
+          decreaseThresholdButton.disabled = disabled;
+          updateThresholdButton.disabled = disabled;
         }
 
         /**
