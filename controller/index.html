@@ -183,6 +183,11 @@
         color: #ffb2b2;
       }
 
+      .toolbar-button--back {
+        padding-right: 16px;
+        padding-left: 12px;
+      }
+
       .toolbar-title {
         margin-right: auto;
         font-size: 1rem;
@@ -254,13 +259,40 @@
         min-width: 180px;
         min-height: 52px;
         padding: 12px 24px;
-        border: 0;
+        border: 4px solid transparent;
         border-radius: 15px;
-        color: #111;
-        background: #fff;
+        color: #211b27;
+        background:
+          linear-gradient(#fff, #fff) padding-box,
+          linear-gradient(
+              105deg,
+              #9fa9ff 0%,
+              #d7a5ed 20%,
+              #f28fc8 38%,
+              #ffd5ca 52%,
+              #ee8bc6 72%,
+              #9ea9ff 100%
+            )
+            border-box;
         font-size: 1rem;
         font-weight: 850;
-        box-shadow: 0 7px 20px rgba(255, 255, 255, 0.16);
+        letter-spacing: 0.02em;
+        box-shadow:
+          0 10px 28px rgba(223, 120, 200, 0.38),
+          0 0 22px rgba(157, 169, 255, 0.26);
+        transition: transform 120ms ease, box-shadow 120ms ease;
+      }
+
+      .transfer-button:active {
+        box-shadow:
+          0 5px 16px rgba(223, 120, 200, 0.32),
+          0 0 14px rgba(157, 169, 255, 0.22);
+        transform: scale(0.97);
+      }
+
+      .transfer-button:focus-visible {
+        outline: 3px solid rgba(239, 143, 200, 0.72);
+        outline-offset: 3px;
       }
 
       .drawing-toast {
@@ -345,7 +377,10 @@
       }
 
       .swipe-content {
-        width: min(420px, calc(100% - 48px));
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr);
+        width: min(520px, calc(100% - 48px));
+        height: min(760px, calc(100% - 96px));
         text-align: center;
       }
 
@@ -363,34 +398,84 @@
 
       .swipe-track {
         position: relative;
-        width: 120px;
-        height: 230px;
-        margin: 24px auto 10px;
+        width: 100%;
+        min-height: 300px;
+        margin: 18px auto 0;
       }
 
       .swipe-arrow {
         position: absolute;
-        top: 5px;
+        top: 4px;
         left: 50%;
         color: rgba(0, 0, 0, 0.34);
-        font-size: 4.8rem;
+        font-size: 4rem;
         font-weight: 300;
         transform: translateX(-50%);
       }
 
+      .swipe-destination {
+        position: absolute;
+        top: 86px;
+        left: 50%;
+        color: rgba(0, 0, 0, 0.48);
+        font-size: 0.82rem;
+        font-weight: 750;
+        transform: translateX(-50%);
+        white-space: nowrap;
+      }
+
+      .swipe-preview-card {
+        position: absolute;
+        bottom: 10px;
+        left: 50%;
+        width: min(192px, 28vw);
+        padding: 7px 7px 9px;
+        border: 1px solid rgba(0, 0, 0, 0.18);
+        border-radius: 9px;
+        color: #27272a;
+        background: #fff;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+        cursor: grab;
+        transform: translate(-50%, var(--preview-offset, 0));
+        transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        touch-action: none;
+      }
+
+      .swipe-preview-card canvas {
+        display: block;
+        width: 100%;
+        aspect-ratio: 3 / 4;
+        border: 1px solid #d1d1d1;
+        background: #000;
+        pointer-events: none;
+      }
+
+      .swipe-preview-label {
+        display: block;
+        margin-top: 7px;
+        font-size: 0.76rem;
+        font-weight: 750;
+        line-height: 1.2;
+        pointer-events: none;
+      }
+
       .swipe-guide {
         position: absolute;
-        bottom: 0;
-        left: 50%;
+        right: calc(50% - min(122px, 18vw));
+        bottom: 42px;
         font-size: 4.4rem;
         filter: grayscale(1);
-        transform: translateX(-50%);
         animation: guide-swipe 1.65s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        pointer-events: none;
+      }
+
+      .swipe-overlay.is-dragging .swipe-preview-card {
+        cursor: grabbing;
+        transition: none;
       }
 
       .swipe-overlay.is-dragging .swipe-guide {
-        animation: none;
-        transform: translate(-50%, var(--drag-offset, 0));
+        display: none;
       }
 
       .swipe-overlay.is-uploading .swipe-track,
@@ -428,18 +513,18 @@
       @keyframes guide-swipe {
         0% {
           opacity: 0;
-          transform: translate(-50%, 20px);
+          transform: translateY(20px);
         }
         20% {
           opacity: 1;
         }
         75% {
           opacity: 1;
-          transform: translate(-50%, -125px);
+          transform: translateY(-155px);
         }
         100% {
           opacity: 0;
-          transform: translate(-50%, -145px);
+          transform: translateY(-180px);
         }
       }
 
@@ -455,12 +540,17 @@
         }
 
         .toolbar-title {
-          order: -1;
-          width: 100%;
+          flex: 1;
+          min-width: 0;
         }
 
         .pen-control {
+          order: 2;
           flex: 1;
+        }
+
+        .toolbar-button--danger {
+          order: 3;
         }
 
         #pen-size {
@@ -514,9 +604,11 @@
 
     <section class="drawing-mode" id="drawing-mode" aria-label="お絵描きモード" hidden>
       <header class="drawing-toolbar">
-        <span class="toolbar-title">お絵描きモード</span>
+        <button class="toolbar-button toolbar-button--back" id="close-drawing" type="button">
+          &lt; 戻る
+        </button>
 
-        <button class="toolbar-button" id="close-drawing" type="button">やめる</button>
+        <span class="toolbar-title">お絵描きモード</span>
 
         <div class="pen-control">
           <label for="pen-size">ペンの太さ</label>
@@ -551,10 +643,15 @@
 
         <div class="swipe-content">
           <h2 id="swipe-title">上にスワイプして転送</h2>
-          <p id="swipe-message">画面の下側から、指を上へ動かしてください。</p>
+          <p id="swipe-message">下の絵を指でつかんで、上へ動かしてください。</p>
 
           <div class="swipe-track" aria-hidden="true">
             <div class="swipe-arrow">↑</div>
+            <div class="swipe-destination">ここまで動かすと転送します</div>
+            <div class="swipe-preview-card" id="swipe-preview">
+              <canvas id="swipe-preview-canvas" width="192" height="256"></canvas>
+              <span class="swipe-preview-label">この絵をつかんで上へ</span>
+            </div>
             <div class="swipe-guide">☝︎</div>
           </div>
 
@@ -583,6 +680,9 @@
         const swipeOverlay = document.getElementById('swipe-overlay');
         const swipeTitle = document.getElementById('swipe-title');
         const swipeMessage = document.getElementById('swipe-message');
+        const swipePreview = document.getElementById('swipe-preview');
+        const swipePreviewCanvas = document.getElementById('swipe-preview-canvas');
+        const swipePreviewContext = swipePreviewCanvas.getContext('2d', { alpha: false });
         const cancelTransferButton = document.getElementById('cancel-transfer');
 
         let isDrawing = false;
@@ -639,10 +739,10 @@
         $('#start-transfer').on('click', showSwipeOverlay);
         $('#cancel-transfer').on('click', hideSwipeOverlay);
 
-        swipeOverlay.addEventListener('pointerdown', startSwipe);
-        swipeOverlay.addEventListener('pointermove', continueSwipe);
-        swipeOverlay.addEventListener('pointerup', finishSwipe);
-        swipeOverlay.addEventListener('pointercancel', cancelSwipe);
+        swipePreview.addEventListener('pointerdown', startSwipe);
+        swipePreview.addEventListener('pointermove', continueSwipe);
+        swipePreview.addEventListener('pointerup', finishSwipe);
+        swipePreview.addEventListener('pointercancel', cancelSwipe);
 
         /**
          * 1536 × 2048の内部解像度と3:4比率を保ったまま、描画領域へ収まる表示寸法を計算する。
@@ -774,13 +874,34 @@
         function showSwipeOverlay() {
           if (isUploading) return;
 
+          updateSwipePreview();
+          cancelSwipe();
           swipeOverlay.hidden = false;
           swipeOverlay.setAttribute('aria-hidden', 'false');
           swipeOverlay.className = 'swipe-overlay';
           swipeTitle.textContent = '上にスワイプして転送';
-          swipeMessage.textContent = '画面の下側から、指を上へ動かしてください。';
+          swipeMessage.textContent = '下の絵を指でつかんで、上へ動かしてください。';
           cancelTransferButton.disabled = false;
           hideDrawingToast();
+        }
+
+        /**
+         * 現在の作品を縦横それぞれ1/8のプレビューへ複写する。
+         * 転送対象そのものを操作させることで、ジェスチャーの開始位置と送る画像を
+         * 視覚的に結び付ける。元のキャンバスや保存するPNGの解像度は変更しない。
+         */
+        function updateSwipePreview() {
+          swipePreviewContext.save();
+          swipePreviewContext.fillStyle = '#000';
+          swipePreviewContext.fillRect(0, 0, swipePreviewCanvas.width, swipePreviewCanvas.height);
+          swipePreviewContext.drawImage(
+            canvas,
+            0,
+            0,
+            swipePreviewCanvas.width,
+            swipePreviewCanvas.height
+          );
+          swipePreviewContext.restore();
         }
 
         /**
@@ -797,31 +918,26 @@
         }
 
         /**
-         * 上スワイプの開始位置を記録する。
-         * 「下から上へ転送する」操作を明確にするため、画面の下半分から始まった
-         * ジェスチャーだけを転送候補として扱う。
+         * 絵のプレビューをつかんだpointerだけを、転送ジェスチャーとして追跡する。
+         * オーバーレイの空白部分では開始しないため、意図しない画面スクロールや
+         * 偶発的な転送を避けられる。
          */
         function startSwipe(event) {
-          if (isUploading || event.target.closest('button')) return;
-
-          const overlayRect = swipeOverlay.getBoundingClientRect();
-          const startsInLowerHalf = event.clientY > overlayRect.top + overlayRect.height * 0.48;
-
-          if (!startsInLowerHalf) {
-            swipeMessage.textContent = 'もう少し下からスワイプしてください。';
-            return;
-          }
+          if (isUploading || swipePointer !== null) return;
+          if (event.pointerType === 'mouse' && event.button !== 0) return;
 
           event.preventDefault();
           swipePointer = event.pointerId;
           swipeStartY = event.clientY;
           swipeCurrentY = event.clientY;
-          swipeOverlay.setPointerCapture(event.pointerId);
+          swipePreview.setPointerCapture(event.pointerId);
           swipeOverlay.classList.add('is-dragging');
+          swipeMessage.textContent = '絵を上へ動かしてください。';
         }
 
         /**
-         * スワイプ距離を追跡し、指のガイドと案内文へ進行状況を反映する。
+         * 指の上方向への移動量をプレビューへ反映する。
+         * 下方向には動かさず、必要距離に近づいたら案内文で転送可能な状態を知らせる。
          */
         function continueSwipe(event) {
           if (event.pointerId !== swipePointer) return;
@@ -829,8 +945,16 @@
           event.preventDefault();
           swipeCurrentY = event.clientY;
           const distance = Math.max(0, swipeStartY - swipeCurrentY);
-          swipeOverlay.style.setProperty('--drag-offset', `${-Math.min(distance, 170)}px`);
-          swipeMessage.textContent = distance > 80 ? 'そのまま上へ！' : '上へスワイプしてください。';
+          const maxDistance = swipeOverlay.getBoundingClientRect().height * 0.62;
+          const displayedDistance = Math.min(distance, maxDistance);
+          const requiredDistance = getRequiredSwipeDistance();
+
+          swipeOverlay.style.setProperty('--preview-offset', `${-displayedDistance}px`);
+          swipeMessage.textContent = distance >= requiredDistance
+            ? '指を離すと転送します。'
+            : distance >= requiredDistance * 0.55
+              ? 'そのまま上へ！'
+              : '絵を上へ動かしてください。';
         }
 
         /**
@@ -840,16 +964,26 @@
         function finishSwipe(event) {
           if (event.pointerId !== swipePointer) return;
 
-          const overlayRect = swipeOverlay.getBoundingClientRect();
-          const requiredDistance = Math.min(190, overlayRect.height * 0.24);
+          swipeCurrentY = event.clientY;
+          const requiredDistance = getRequiredSwipeDistance();
           const distance = swipeStartY - swipeCurrentY;
           cancelSwipe();
 
           if (distance >= requiredDistance) {
             uploadDrawing();
           } else {
-            swipeMessage.textContent = 'もう少し大きく、下から上へスワイプしてください。';
+            swipeMessage.textContent = '絵をもう少し上まで動かしてください。';
           }
+        }
+
+        /**
+         * 転送を確定する移動距離を画面高に合わせて決める。
+         * iPadでは十分に「送った」と感じられる距離を確保しつつ、小さい画面でも
+         * プレビューを画面外まで動かさず完了できる範囲に制限する。
+         */
+        function getRequiredSwipeDistance() {
+          const overlayHeight = swipeOverlay.getBoundingClientRect().height;
+          return Math.min(280, Math.max(150, overlayHeight * 0.28));
         }
 
         /**
@@ -857,11 +991,15 @@
          * 次の操作に前回の移動量やアニメーション位置を持ち越さないために使用する。
          */
         function cancelSwipe() {
+          if (swipePointer !== null && swipePreview.hasPointerCapture(swipePointer)) {
+            swipePreview.releasePointerCapture(swipePointer);
+          }
+
           swipePointer = null;
           swipeStartY = 0;
           swipeCurrentY = 0;
           swipeOverlay.classList.remove('is-dragging');
-          swipeOverlay.style.removeProperty('--drag-offset');
+          swipeOverlay.style.removeProperty('--preview-offset');
         }
 
         /**
