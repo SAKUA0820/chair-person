@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja">
+<html lang="ko">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -43,7 +43,7 @@
         background:
           var(--accent-gradient) top / 100% 7px no-repeat,
           #faf9f7;
-        font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+        font-family: "Apple SD Gothic Neo", "Noto Sans KR", -apple-system, BlinkMacSystemFont, sans-serif;
       }
 
       button,
@@ -749,25 +749,25 @@
         <p class="eyebrow">Chair Person</p>
         <div class="controller-title-row">
           <h1>Controller</h1>
-          <img class="controller-mark" src="./chair-person.png" alt="Chair Personの椅子" />
+          <img class="controller-mark" src="./chair-person.png" alt="Chair Person 의자" />
         </div>
-        <p class="lead-copy">展示中の画像操作と、新しい絵の追加ができます。</p>
+        <p class="lead-copy">전시 중인 이미지를 조작하고 새 그림을 추가할 수 있습니다.</p>
       </header>
 
-      <section class="controller-card" aria-label="ChairPersonコントローラ">
+      <section class="controller-card" aria-label="Chair Person 컨트롤러">
         <div class="action-grid">
           <button class="control-button control-button--draw" id="open-drawing" type="button">
-            お絵描きモード
-            <small>お絵描きしたイラストがChairPersonのデザインに</small>
+            그리기 모드
+            <small>그린 그림이 Chair Person 디자인으로 표시됩니다</small>
           </button>
 
           <button class="control-button" id="change" type="button">
-            次の画像へ
+            다음 이미지로
             <small>image-change</small>
           </button>
 
           <button class="control-button" id="fetch" type="button">
-            画像を更新
+            이미지 새로고침
             <small>image-fetch</small>
           </button>
         </div>
@@ -775,10 +775,10 @@
         <section class="threshold-panel" aria-labelledby="threshold-title">
           <div class="threshold-heading">
             <div>
-              <h2 id="threshold-title">センサー閾値</h2>
-              <p>左右どちらかのセンサー値が、この値を下回ると画像を表示します。</p>
+              <h2 id="threshold-title">센서 임계값</h2>
+              <p>왼쪽 또는 오른쪽 센서 값이 이 값보다 낮아지면 이미지가 표시됩니다.</p>
             </div>
-            <span class="threshold-current" id="threshold-current">現在 0.5</span>
+            <span class="threshold-current" id="threshold-current">현재 0.5</span>
           </div>
 
           <div class="threshold-editor">
@@ -791,26 +791,26 @@
                 step="0.1"
                 value="0.5"
                 inputmode="decimal"
-                aria-label="センサー閾値"
+                aria-label="센서 임계값"
               />
               <div class="threshold-step-buttons">
                 <button
                   class="threshold-step-button"
                   id="increase-threshold"
                   type="button"
-                  aria-label="閾値を0.1上げる"
+                  aria-label="임계값을 0.1 올리기"
                 >▲</button>
                 <button
                   class="threshold-step-button"
                   id="decrease-threshold"
                   type="button"
-                  aria-label="閾値を0.1下げる"
+                  aria-label="임계값을 0.1 내리기"
                 >▼</button>
               </div>
             </div>
 
             <button class="threshold-update-button" id="update-threshold" type="button">
-              更新
+              업데이트
             </button>
           </div>
         </section>
@@ -819,31 +819,31 @@
       </section>
     </main>
 
-    <section class="drawing-mode" id="drawing-mode" aria-label="お絵描きモード" hidden>
+    <section class="drawing-mode" id="drawing-mode" aria-label="그리기 모드" hidden>
       <header class="drawing-toolbar">
         <button class="toolbar-button toolbar-button--back" id="close-drawing" type="button">
-          &lt; 戻る
+          &lt; 뒤로
         </button>
 
-        <span class="toolbar-title">お絵描きモード</span>
+        <span class="toolbar-title">그리기 모드</span>
 
         <div class="pen-control">
-          <label for="pen-size">ペンの太さ</label>
+          <label for="pen-size">펜 굵기</label>
           <input id="pen-size" type="range" min="2" max="40" value="10" />
           <output id="pen-size-value" for="pen-size">10</output>
         </div>
 
         <button class="toolbar-button toolbar-button--danger" id="clear-canvas" type="button">
-          全消去
+          모두 지우기
         </button>
       </header>
 
       <div class="canvas-stage">
-        <canvas id="drawing-canvas" width="1536" height="2048" aria-label="キャンバス"></canvas>
+        <canvas id="drawing-canvas" width="1536" height="2048" aria-label="그림 캔버스"></canvas>
       </div>
 
       <footer class="drawing-footer">
-        <button class="transfer-button" id="start-transfer" type="button">ChairPersonに転送</button>
+        <button class="transfer-button" id="start-transfer" type="button">Chair Person으로 전송</button>
       </footer>
 
       <div
@@ -851,23 +851,23 @@
         id="drawing-status"
         role="status"
         aria-live="polite"
-        aria-label="タップして閉じる"
+        aria-label="탭하여 닫기"
         hidden
       ></div>
 
       <div class="swipe-overlay" id="swipe-overlay" aria-hidden="true" hidden>
-        <button class="overlay-cancel" id="cancel-transfer" type="button">戻る</button>
+        <button class="overlay-cancel" id="cancel-transfer" type="button">뒤로</button>
 
         <div class="swipe-content">
-          <h2 id="swipe-title">上にスワイプして転送</h2>
-          <p id="swipe-message">描いたイラストをしたから上にスワイプ！</p>
+          <h2 id="swipe-title">위로 스와이프하여 전송</h2>
+          <p id="swipe-message">그린 그림을 아래에서 위로 스와이프하세요!</p>
 
           <div class="swipe-track" aria-hidden="true">
             <div class="swipe-arrow">↑</div>
-            <div class="swipe-destination">ここまで動かすと転送</div>
+            <div class="swipe-destination">여기까지 올리면 전송</div>
             <div class="swipe-preview-card" id="swipe-preview">
               <canvas id="swipe-preview-canvas" width="192" height="256"></canvas>
-              <span class="swipe-preview-label">この絵をスワイプして上へ</span>
+              <span class="swipe-preview-label">이 그림을 위로 스와이프하세요</span>
             </div>
             <div class="swipe-guide">☝︎</div>
           </div>
@@ -926,11 +926,11 @@
         resetCanvas();
 
         $('#change').on('click', async () => {
-          await sendControllerMessage('image-change', '次の画像に切り替えました。');
+          await sendControllerMessage('image-change', '다음 이미지로 전환했습니다.');
         });
 
         $('#fetch').on('click', async () => {
-          await sendControllerMessage('image-fetch', '画像を更新しました。');
+          await sendControllerMessage('image-fetch', '이미지를 새로고침했습니다.');
         });
 
         increaseThresholdButton.addEventListener('click', () => {
@@ -956,14 +956,14 @@
           document.body.style.overflow = 'hidden';
           // hidden中は描画領域の大きさが0なので、表示後のフレームで寸法を計算する。
           window.requestAnimationFrame(fitCanvasToStage);
-          showDrawingToast('白いペンで自由に描けます。', 'info');
+          showDrawingToast('흰색 펜으로 자유롭게 그릴 수 있습니다.', 'info');
         });
 
         $('#close-drawing').on('click', closeDrawingMode);
 
         $('#clear-canvas').on('click', () => {
           resetCanvas();
-          showDrawingToast('キャンバスを最初の状態に戻しました。', 'info');
+          showDrawingToast('캔버스를 처음 상태로 되돌렸습니다.', 'info');
         });
 
         drawingStatus.addEventListener('click', hideDrawingToast);
@@ -1126,8 +1126,8 @@
           swipeOverlay.hidden = false;
           swipeOverlay.setAttribute('aria-hidden', 'false');
           swipeOverlay.className = 'swipe-overlay';
-          swipeTitle.textContent = '上にスワイプして転送';
-          swipeMessage.textContent = '下の絵を指でつかんで、上へ動かしてください。';
+          swipeTitle.textContent = '위로 스와이프하여 전송';
+          swipeMessage.textContent = '아래 그림을 손가락으로 잡고 위로 움직여 주세요.';
           cancelTransferButton.disabled = false;
           hideDrawingToast();
         }
@@ -1179,7 +1179,7 @@
           swipeCurrentY = event.clientY;
           swipePreview.setPointerCapture(event.pointerId);
           swipeOverlay.classList.add('is-dragging');
-          swipeMessage.textContent = '絵を上へ動かしてください。';
+          swipeMessage.textContent = '그림을 위로 움직여 주세요.';
         }
 
         /**
@@ -1198,10 +1198,10 @@
 
           swipeOverlay.style.setProperty('--preview-offset', `${-displayedDistance}px`);
           swipeMessage.textContent = distance >= requiredDistance
-            ? '指を離すと転送します。'
+            ? '손가락을 떼면 전송됩니다.'
             : distance >= requiredDistance * 0.55
-              ? 'そのまま上へ！'
-              : '絵を上へ動かしてください。';
+              ? '조금만 더 위로!'
+              : '그림을 위로 움직여 주세요.';
         }
 
         /**
@@ -1219,7 +1219,7 @@
           if (distance >= requiredDistance) {
             uploadDrawing();
           } else {
-            swipeMessage.textContent = '絵をもう少し上まで動かしてください。';
+            swipeMessage.textContent = '그림을 조금 더 위까지 움직여 주세요.';
           }
         }
 
@@ -1262,8 +1262,8 @@
           isUploading = true;
           cancelTransferButton.disabled = true;
           swipeOverlay.className = 'swipe-overlay is-uploading';
-          swipeTitle.textContent = '転送しています';
-          swipeMessage.textContent = '画像の保存が終わるまで、そのままお待ちください。';
+          swipeTitle.textContent = '전송 중입니다';
+          swipeMessage.textContent = '이미지 저장이 끝날 때까지 잠시 기다려 주세요.';
 
           try {
             const imageBlob = await canvasToBlob(canvas);
@@ -1281,17 +1281,17 @@
             try {
               await sendObnizMessage('image-fetch');
               showTransferResult(
-                '転送できました',
-                '最新の画像に切り替えました。',
-                '画像を転送し、展示を最新の画像に切り替えました。',
+                '전송되었습니다',
+                '최신 이미지로 전환했습니다.',
+                '이미지를 전송하고 전시 화면을 최신 이미지로 전환했습니다.',
                 'success'
               );
             } catch (messageError) {
               console.error('image-fetch送信エラー:', messageError);
               showTransferResult(
-                '画像を転送しました',
-                '切り替え通知だけ失敗しました。「画像を更新」を押してください。',
-                '画像は転送済みですが、切り替え通知に失敗しました。',
+                '이미지를 전송했습니다',
+                '전환 알림 전송에 실패했습니다. ‘이미지 새로고침’을 눌러 주세요.',
+                '이미지는 전송되었지만 전환 알림 전송에 실패했습니다.',
                 'error'
               );
             }
@@ -1312,9 +1312,9 @@
             isUploading = false;
             cancelTransferButton.disabled = false;
             swipeOverlay.className = 'swipe-overlay';
-            swipeTitle.textContent = '転送できませんでした';
+            swipeTitle.textContent = '전송하지 못했습니다';
             swipeMessage.textContent = errorMessage;
-            showDrawingToast(`転送エラー\n${errorMessage}`, 'error', 10000);
+            showDrawingToast(`전송 오류\n${errorMessage}`, 'error', 10000);
           }
         }
 
@@ -1342,7 +1342,7 @@
          */
         function formatTransferError(error) {
           const details = error && typeof error === 'object' ? error : {};
-          const parts = [details.message || String(error) || '詳細不明のエラーです。'];
+          const parts = [details.message || String(error) || '자세한 내용을 알 수 없는 오류입니다.'];
 
           if (details.status || details.statusCode) {
             parts.push(`status: ${details.status || details.statusCode}`);
@@ -1391,7 +1391,7 @@
               if (blob) {
                 resolve(blob);
               } else {
-                reject(new Error('キャンバスを画像に変換できませんでした。'));
+                reject(new Error('캔버스를 이미지로 변환하지 못했습니다.'));
               }
             }, 'image/png');
           });
@@ -1414,11 +1414,11 @@
         function getSupabaseClient() {
           if (!supabaseClient) {
             if (!window.supabase || typeof window.supabase.createClient !== 'function') {
-              throw new Error('Supabase SDKを読み込めませんでした。');
+              throw new Error('Supabase SDK를 불러오지 못했습니다.');
             }
 
             if (SUPABASE_URL === 'SUPABASE_URL' || SUPABASE_KEY === 'SUPABASE_KEY') {
-              throw new Error('controller側のSupabase URLまたはKeyが未設定です。');
+              throw new Error('controller의 Supabase URL 또는 Key가 설정되지 않았습니다.');
             }
 
             supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -1453,7 +1453,7 @@
 
           if (normalizedValue === null) {
             sensorThresholdInput.value = currentSensorThreshold.toFixed(1);
-            setControllerStatus('閾値は0.0〜5.0の範囲で入力してください。', 'error');
+            setControllerStatus('임계값은 0.0~5.0 범위로 입력해 주세요.', 'error');
             return;
           }
 
@@ -1469,25 +1469,25 @@
 
           if (nextThreshold === null) {
             sensorThresholdInput.value = currentSensorThreshold.toFixed(1);
-            setControllerStatus('閾値は0.0〜5.0の範囲で入力してください。', 'error');
+            setControllerStatus('임계값은 0.0~5.0 범위로 입력해 주세요.', 'error');
             return;
           }
 
           setThresholdControlsDisabled(true);
-          setControllerStatus('センサー閾値を送信しています…', 'loading');
+          setControllerStatus('센서 임계값을 전송하고 있습니다…', 'loading');
 
           try {
             await sendObnizMessage(createSensorThresholdUpdateMessage(nextThreshold));
             currentSensorThreshold = nextThreshold;
             renderSensorThreshold(currentSensorThreshold);
             setControllerStatus(
-              `センサー閾値を${currentSensorThreshold.toFixed(1)}に更新しました。`,
+              `센서 임계값을 ${currentSensorThreshold.toFixed(1)}로 업데이트했습니다.`,
               'success'
             );
           } catch (error) {
             console.error('センサー閾値送信エラー:', error);
             renderSensorThreshold(currentSensorThreshold);
-            setControllerStatus('センサー閾値を送信できませんでした。', 'error');
+            setControllerStatus('센서 임계값을 전송하지 못했습니다.', 'error');
           } finally {
             setThresholdControlsDisabled(false);
           }
@@ -1528,7 +1528,7 @@
         function renderSensorThreshold(value) {
           const displayValue = value.toFixed(1);
           sensorThresholdInput.value = displayValue;
-          currentThresholdLabel.textContent = `現在 ${displayValue}`;
+          currentThresholdLabel.textContent = `현재 ${displayValue}`;
         }
 
         /**
@@ -1549,14 +1549,14 @@
         async function sendControllerMessage(message, successMessage) {
           const button = message === 'image-change' ? $('#change') : $('#fetch');
           button.prop('disabled', true);
-          setControllerStatus('送信しています…', 'loading');
+          setControllerStatus('전송하고 있습니다…', 'loading');
 
           try {
             await sendObnizMessage(message);
             setControllerStatus(successMessage, 'success');
           } catch (error) {
             console.error(`${message}送信エラー:`, error);
-            setControllerStatus('メッセージを送信できませんでした。', 'error');
+            setControllerStatus('메시지를 전송하지 못했습니다.', 'error');
           } finally {
             button.prop('disabled', false);
           }
