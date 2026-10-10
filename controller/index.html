@@ -313,6 +313,15 @@
         overflow: hidden;
       }
 
+      /* 描画中の指やペンの移動を、iPadが文字選択や長押し操作として扱うのを防ぐ。 */
+      .drawing-mode,
+      .drawing-mode * {
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+
       .drawing-mode[hidden] {
         display: none;
       }
