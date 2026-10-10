@@ -908,6 +908,8 @@
         const STORAGE_BUCKET = 'chair-person-backrest';
         const ARCHIVE_BUCKET = 'chair-person-archive';
         const DRAWING_FILE_PREFIX = 'drawing-';
+        const DRAWING_UPLOAD_TIMEOUT_MS = 25 * 1000;
+        const DRAWING_NOTIFICATION_TIMEOUT_MS = 15 * 1000;
         const OBNIZ_MESSAGE_URL = 'https://obniz.com/obniz/XXXX-XXXX/message';
         const SENSOR_THRESHOLD_DEFAULT = 0.5;
         const SENSOR_THRESHOLD_MIN = 0;
@@ -1183,7 +1185,7 @@
 
         /**
          * 確認オーバーレイを閉じ、途中のスワイプ状態も破棄する。
-         * ネットワーク処理の結果が確定するまでは閉じられない。
+         * 転送の結果表示またはタイムアウトで操作ロックが解除されるまでは閉じられない。
          */
         function hideSwipeOverlay(event) {
           if (event) event.stopPropagation();
@@ -1282,12 +1284,23 @@
         /**
          * キャンバスをPNGへ変換してSupabaseへ保存し、保存成功後にimage-fetchを送る。
          * 展示画面へ存在しない画像を通知しないよう、アップロードと通知は必ずこの順で行う。
+         * 保存と通知の待機時間にそれぞれ上限を設け、応答がなくても描いた絵を残して操作へ戻す。
          * 保存後の通知だけ失敗した場合は再アップロードせず、手動更新を案内する。
          */
         async function uploadDrawing() {
           if (isUploading || isArchiving || isSendingImageMessage) return;
 
           let objectName = '';
+          let uploadTimeoutId;
+          const uploadTimeoutError = new Error(
+            `転送開始から${DRAWING_UPLOAD_TIMEOUT_MS / 1000}秒が経過したため、待機を終了しました。`
+          );
+          uploadTimeoutError.name = 'TimeoutError';
+
+          // PNG化から保存完了までを25秒とし、保存後の通知は別の期限で待つ。
+          const uploadTimeout = new Promise((resolve, reject) => {
+            uploadTimeoutId = window.setTimeout(() => reject(uploadTimeoutError), DRAWING_UPLOAD_TIMEOUT_MS);
+          });
 
           isUploading = true;
           setImageControlsDisabled(true);
@@ -1297,20 +1310,38 @@
           swipeMessage.textContent = '画像の保存が終わるまで、そのままお待ちください。';
 
           try {
-            const imageBlob = await canvasToBlob(canvas);
+            // 各段階で待機を打ち切り、時間切れ後の応答から通知や画面更新へ進ませない。
+            const imageBlob = await Promise.race([canvasToBlob(canvas), uploadTimeout]);
             objectName = createObjectName();
-            const { error } = await getSupabaseClient().storage
-              .from(STORAGE_BUCKET)
-              .upload(objectName, imageBlob, {
-                cacheControl: '3600',
-                contentType: 'image/png',
-                upsert: false,
-              });
+            const { error } = await Promise.race([
+              getSupabaseClient().storage
+                .from(STORAGE_BUCKET)
+                .upload(objectName, imageBlob, {
+                  cacheControl: '3600',
+                  contentType: 'image/png',
+                  upsert: false,
+                }),
+              uploadTimeout,
+            ]);
 
             if (error) throw error;
 
+            window.clearTimeout(uploadTimeoutId);
+            swipeMessage.textContent = '画像を保存しました。展示への更新通知を送っています。';
+
+            let notificationTimeoutId;
+            const notificationTimeoutError = new Error(
+              `更新通知の送信開始から${DRAWING_NOTIFICATION_TIMEOUT_MS / 1000}秒が経過したため、待機を終了しました。`
+            );
+            notificationTimeoutError.name = 'TimeoutError';
+            const notificationTimeout = new Promise((resolve, reject) => {
+              notificationTimeoutId = window.setTimeout(
+                () => reject(notificationTimeoutError), DRAWING_NOTIFICATION_TIMEOUT_MS
+              );
+            });
+
             try {
-              await sendObnizMessage('image-fetch');
+              await Promise.race([sendObnizMessage('image-fetch'), notificationTimeout]);
               showTransferResult(
                 '転送できました',
                 '最新の画像に切り替えました。',
@@ -1319,12 +1350,17 @@
               );
             } catch (messageError) {
               console.error('image-fetch送信エラー:', messageError);
+              const notificationMessage = messageError === notificationTimeoutError
+                ? '更新通知が時間内に完了しませんでした。「画像を更新」を押してください。'
+                : '切り替え通知だけ失敗しました。「画像を更新」を押してください。';
               showTransferResult(
                 '画像を転送しました',
-                '切り替え通知だけ失敗しました。「画像を更新」を押してください。',
-                '画像は転送済みですが、切り替え通知に失敗しました。',
+                notificationMessage,
+                `画像は転送済みです。${notificationMessage}`,
                 'error'
               );
+            } finally {
+              window.clearTimeout(notificationTimeoutId);
             }
           } catch (uploadError) {
             // 認証情報は含めず、Supabaseが返す診断情報と転送対象だけを記録する。
@@ -1340,13 +1376,22 @@
               objectName: objectName || null,
               error: uploadError,
             });
+            const timedOut = uploadError === uploadTimeoutError;
+            // 待機の終了はサーバーでの保存取消しではないため、未保存とは断定しない。
+            const retryMessage = timedOut
+              ? objectName
+                ? '\n画像が保存されている場合があります。「画像を更新」で確認してから再送してください。'
+                : '\n描いた絵は残っています。もう一度スワイプしてください。'
+              : '';
             isUploading = false;
             setImageControlsDisabled(false);
             cancelTransferButton.disabled = false;
             swipeOverlay.className = 'swipe-overlay';
-            swipeTitle.textContent = '転送できませんでした';
-            swipeMessage.textContent = errorMessage;
-            showDrawingToast(`転送エラー\n${errorMessage}`, 'error', 10000);
+            swipeTitle.textContent = timedOut ? '転送の確認がタイムアウトしました' : '転送できませんでした';
+            swipeMessage.textContent = `${errorMessage}${retryMessage}`;
+            showDrawingToast(`${swipeTitle.textContent}\n${swipeMessage.textContent}`, 'error', 10000);
+          } finally {
+            window.clearTimeout(uploadTimeoutId);
           }
         }
 

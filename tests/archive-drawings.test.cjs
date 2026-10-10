@@ -73,7 +73,9 @@ function createController(options = {}) {
       setPointerCapture: noop,
       hasPointerCapture: () => false,
       releasePointerCapture: noop,
-      toBlob: (callback) => callback({ type: 'image/png' }),
+      toBlob: (callback) => options.onBlob
+        ? options.onBlob(callback)
+        : callback({ type: 'image/png' }),
       handlers,
     };
     elements.set(id, result);
@@ -166,13 +168,32 @@ function createController(options = {}) {
     },
   };
 
-  const timers = [];
+  const timers = new Map();
+  let nextTimerId = 0;
+  let elapsedTime = 0;
+  function advanceTimersBy(duration) {
+    const targetTime = elapsedTime + duration;
+    while (true) {
+      const next = [...timers.values()]
+        .filter((timer) => timer.at <= targetTime)
+        .sort((a, b) => a.at - b.at || a.id - b.id)[0];
+      if (!next) break;
+      elapsedTime = next.at;
+      timers.delete(next.id);
+      next.callback();
+    }
+    elapsedTime = targetTime;
+  }
   const window = {
     supabase,
     addEventListener: noop,
     requestAnimationFrame: noop,
-    setTimeout(callback, delay) { timers.push({ callback, delay }); return timers.length; },
-    clearTimeout: noop,
+    setTimeout(callback, delay) {
+      const id = ++nextTimerId;
+      timers.set(id, { id, callback, delay, at: elapsedTime + delay });
+      return id;
+    },
+    clearTimeout(id) { timers.delete(id); },
   };
   vm.runInNewContext(inlineScript, {
     $,
@@ -202,9 +223,9 @@ function createController(options = {}) {
       const result = element('controller-status');
       return { text: result.textContent, state: result.dataset.state };
     },
-    runTimers(delay) {
-      for (const timer of timers.filter((item) => item.delay === delay)) timer.callback();
-    },
+    runTimers: advanceTimersBy,
+    advanceTimersBy,
+    activeTimerCount: (delay) => [...timers.values()].filter((timer) => timer.delay === delay).length,
     assertControlsDisabled(disabled) {
       for (const id of imageControlIds) assert.equal(element(id).disabled, disabled, `#${id}.disabled`);
     },
@@ -405,5 +426,172 @@ test('描いた絵の転送中は保管と画像操作を拒否し、転送結�
   assert.deepEqual(controller.state.messages, ['image-fetch']);
   controller.assertControlsDisabled(true);
   controller.runTimers(1600);
+  controller.assertControlsDisabled(false);
+});
+
+// Promiseの完了処理を実行してから画面状態を確認する。実際の通信や25秒の待機は行わない。
+const flushAsync = () => new Promise((resolve) => setImmediate(resolve));
+
+async function startDrawingTransfer(controller) {
+  await controller.click('open-drawing');
+  await controller.click('start-transfer');
+  controller.event('swipe-preview', 'pointerdown', { pointerId: 1, clientY: 700, pointerType: 'touch' });
+  controller.event('swipe-preview', 'pointerup', { pointerId: 1, clientY: 100, pointerType: 'touch' });
+  await flushAsync();
+}
+
+test('PNG化が応答しない場合も25秒で解除し、遅いPNG結果からアップロードしない', async () => {
+  let finishBlob;
+  const controller = createController({ onBlob: (callback) => { finishBlob = callback; } });
+  await startDrawingTransfer(controller);
+
+  controller.advanceTimersBy(24999);
+  await flushAsync();
+  controller.assertControlsDisabled(true);
+  assert.match(controller.element('swipe-overlay').className, /is-uploading/);
+
+  controller.advanceTimersBy(1);
+  await flushAsync();
+  controller.assertControlsDisabled(false);
+  assert.equal(controller.element('cancel-transfer').disabled, false);
+  assert.equal(controller.element('drawing-mode').hidden, false);
+  assert.equal(controller.element('swipe-title').textContent, '転送の確認がタイムアウトしました');
+  assert.doesNotMatch(controller.element('swipe-overlay').className, /is-uploading/);
+
+  finishBlob({ type: 'image/png' });
+  await flushAsync();
+  assert.equal(controller.state.uploads.length, 0);
+  assert.deepEqual(controller.state.messages, []);
+});
+
+for (const lateResult of ['success', 'failure']) {
+  test(`アップロード時間切れ後に再試行でき、前回の遅い${lateResult}は新しい結果を変更しない`, async () => {
+    const uploadGate = deferred();
+    const controller = createController({
+      onUpload: (call, state) => state.uploads.length === 1 ? uploadGate.promise : undefined,
+    });
+    await startDrawingTransfer(controller);
+    assert.equal(controller.state.uploads.length, 1);
+
+    controller.advanceTimersBy(25000);
+    await flushAsync();
+    controller.assertControlsDisabled(false);
+    assert.equal(controller.element('cancel-transfer').disabled, false);
+    assert.equal(controller.element('drawing-mode').hidden, false);
+    assert.equal(controller.element('swipe-title').textContent, '転送の確認がタイムアウトしました');
+    assert.match(controller.element('swipe-message').textContent, /保存されている場合/);
+    assert.doesNotMatch(controller.element('swipe-overlay').className, /is-uploading/);
+    assert.deepEqual(controller.state.messages, []);
+
+    await startDrawingTransfer(controller);
+    assert.equal(controller.state.uploads.length, 2);
+    assert.deepEqual(controller.state.messages, ['image-fetch']);
+    assert.equal(controller.element('swipe-title').textContent, '転送できました');
+    assert.equal(controller.activeTimerCount(25000), 0);
+
+    if (lateResult === 'success') uploadGate.resolve({ data: {}, error: null });
+    else uploadGate.reject(new Error('Load failed'));
+    await flushAsync();
+    assert.deepEqual(controller.state.messages, ['image-fetch']);
+    assert.equal(controller.element('swipe-title').textContent, '転送できました');
+    controller.assertControlsDisabled(true);
+    controller.advanceTimersBy(1600);
+    controller.assertControlsDisabled(false);
+  });
+}
+
+test('初回成功のタイマーを解除し、2回目のアップロードも開始から25秒で打ち切る', async () => {
+  const uploadGate = deferred();
+  const controller = createController({
+    onUpload: (call, state) => state.uploads.length === 2 ? uploadGate.promise : undefined,
+  });
+  await startDrawingTransfer(controller);
+  assert.equal(controller.element('swipe-title').textContent, '転送できました');
+  assert.equal(controller.activeTimerCount(25000), 0);
+  controller.advanceTimersBy(1600);
+  controller.assertControlsDisabled(false);
+
+  await startDrawingTransfer(controller);
+  assert.equal(controller.activeTimerCount(25000), 1);
+  // 初回開始から25秒の時点では、2回目の期限にはまだ到達していない。
+  controller.advanceTimersBy(23400);
+  await flushAsync();
+  controller.assertControlsDisabled(true);
+  controller.advanceTimersBy(1599);
+  await flushAsync();
+  assert.match(controller.element('swipe-overlay').className, /is-uploading/);
+  controller.advanceTimersBy(1);
+  await flushAsync();
+  controller.assertControlsDisabled(false);
+  assert.equal(controller.element('swipe-title').textContent, '転送の確認がタイムアウトしました');
+  assert.deepEqual(controller.state.messages, ['image-fetch']);
+
+  uploadGate.resolve();
+  await flushAsync();
+  assert.deepEqual(controller.state.messages, ['image-fetch']);
+});
+
+test('保存後の通知には別途15秒を確保し、時間切れでは保存済みであることを示す', async () => {
+  const uploadGate = deferred();
+  const messageGate = deferred();
+  const controller = createController({
+    onUpload: () => uploadGate.promise,
+    onMessage: () => messageGate.promise,
+  });
+  await startDrawingTransfer(controller);
+  controller.advanceTimersBy(20000);
+  uploadGate.resolve();
+  await flushAsync();
+  assert.deepEqual(controller.state.messages, ['image-fetch']);
+  assert.equal(controller.activeTimerCount(25000), 0);
+  assert.equal(controller.activeTimerCount(15000), 1);
+
+  controller.advanceTimersBy(14999);
+  await flushAsync();
+  assert.match(controller.element('swipe-overlay').className, /is-uploading/);
+  controller.advanceTimersBy(1);
+  await flushAsync();
+  assert.doesNotMatch(controller.element('swipe-overlay').className, /is-uploading/);
+  assert.equal(controller.element('swipe-title').textContent, '画像を転送しました');
+  assert.match(controller.element('swipe-message').textContent, /時間内に完了しませんでした/);
+  assert.match(controller.element('swipe-message').textContent, /画像を更新/);
+  assert.equal(controller.state.uploads.length, 1);
+  assert.equal(controller.activeTimerCount(15000), 0);
+
+  messageGate.resolve();
+  await flushAsync();
+  assert.equal(controller.element('swipe-title').textContent, '画像を転送しました');
+  controller.advanceTimersBy(1600);
+  controller.assertControlsDisabled(false);
+  assert.equal(controller.element('cancel-transfer').disabled, false);
+  assert.equal(controller.element('drawing-status').dataset.state, 'error');
+  assert.match(controller.element('drawing-status').textContent, /画像を更新/);
+});
+
+test('通知成功時に15秒のタイマーを解除し、2回目の通知を早く打ち切らない', async () => {
+  const messageGate = deferred();
+  const controller = createController({
+    onMessage: (message, state) => state.messages.length === 2 ? messageGate.promise : undefined,
+  });
+  await startDrawingTransfer(controller);
+  assert.equal(controller.element('swipe-title').textContent, '転送できました');
+  assert.equal(controller.activeTimerCount(15000), 0);
+  controller.advanceTimersBy(1600);
+
+  await startDrawingTransfer(controller);
+  assert.equal(controller.activeTimerCount(15000), 1);
+  // 初回通知から15秒の時点を過ぎても、2回目の通知にはまだ待ち時間が残る。
+  controller.advanceTimersBy(14999);
+  await flushAsync();
+  assert.match(controller.element('swipe-overlay').className, /is-uploading/);
+  controller.advanceTimersBy(1);
+  await flushAsync();
+  assert.equal(controller.element('swipe-title').textContent, '画像を転送しました');
+  assert.equal(controller.activeTimerCount(15000), 0);
+  assert.deepEqual(controller.state.messages, ['image-fetch', 'image-fetch']);
+
+  messageGate.resolve();
+  await flushAsync();
+  controller.advanceTimersBy(1600);
   controller.assertControlsDisabled(false);
 });
