@@ -140,6 +140,12 @@
         box-shadow: 0 5px 14px rgba(177, 126, 172, 0.13);
       }
 
+      .control-button--archive {
+        grid-column: 1 / -1;
+        border-color: #e4cadb;
+        background: var(--soft-pink);
+      }
+
       .control-button small {
         display: block;
         margin-top: 4px;
@@ -281,6 +287,8 @@
         color: var(--muted);
         font-size: 0.9rem;
         text-align: center;
+        white-space: pre-line;
+        overflow-wrap: anywhere;
       }
 
       .controller-status[data-state="success"] {
@@ -770,6 +778,11 @@
             画像を更新
             <small>image-fetch</small>
           </button>
+
+          <button class="control-button control-button--archive" id="archive-drawings" type="button">
+            お絵描き画像を保管
+            <small>描いた画像を保管先へ移動し、展示一覧を更新します</small>
+          </button>
         </div>
 
         <section class="threshold-panel" aria-labelledby="threshold-title">
@@ -884,6 +897,8 @@
         const SUPABASE_URL = 'SUPABASE_URL';
         const SUPABASE_KEY = 'SUPABASE_KEY';
         const STORAGE_BUCKET = 'chair-person-backrest';
+        const ARCHIVE_BUCKET = 'chair-person-archive';
+        const DRAWING_FILE_PREFIX = 'drawing-';
         const OBNIZ_MESSAGE_URL = 'https://obniz.com/obniz/XXXX-XXXX/message';
         const SENSOR_THRESHOLD_DEFAULT = 0.5;
         const SENSOR_THRESHOLD_MIN = 0;
@@ -918,6 +933,8 @@
         let swipeStartY = 0;
         let swipeCurrentY = 0;
         let isUploading = false;
+        let isArchiving = false;
+        let isSendingImageMessage = false;
         let supabaseClient = null;
         let toastTimer = null;
         let currentSensorThreshold = SENSOR_THRESHOLD_DEFAULT;
@@ -932,6 +949,8 @@
         $('#fetch').on('click', async () => {
           await sendControllerMessage('image-fetch', '画像を更新しました。');
         });
+
+        $('#archive-drawings').on('click', archiveDrawings);
 
         increaseThresholdButton.addEventListener('click', () => {
           adjustSensorThreshold(SENSOR_THRESHOLD_STEP);
@@ -952,6 +971,8 @@
         updateThresholdButton.addEventListener('click', updateSensorThreshold);
 
         $('#open-drawing').on('click', () => {
+          if (isArchiving || isSendingImageMessage) return;
+
           drawingMode.hidden = false;
           document.body.style.overflow = 'hidden';
           // hidden中は描画領域の大きさが0なので、表示後のフレームで寸法を計算する。
@@ -1255,11 +1276,12 @@
          * 保存後の通知だけ失敗した場合は再アップロードせず、手動更新を案内する。
          */
         async function uploadDrawing() {
-          if (isUploading) return;
+          if (isUploading || isArchiving || isSendingImageMessage) return;
 
           let objectName = '';
 
           isUploading = true;
+          setImageControlsDisabled(true);
           cancelTransferButton.disabled = true;
           swipeOverlay.className = 'swipe-overlay is-uploading';
           swipeTitle.textContent = '転送しています';
@@ -1310,6 +1332,7 @@
               error: uploadError,
             });
             isUploading = false;
+            setImageControlsDisabled(false);
             cancelTransferButton.disabled = false;
             swipeOverlay.className = 'swipe-overlay';
             swipeTitle.textContent = '転送できませんでした';
@@ -1329,6 +1352,7 @@
 
           window.setTimeout(() => {
             isUploading = false;
+            setImageControlsDisabled(false);
             cancelTransferButton.disabled = false;
             hideSwipeOverlay();
             showDrawingToast(statusMessage, statusState, statusState === 'error' ? 8000 : 3500);
@@ -1408,7 +1432,7 @@
         }
 
         /**
-         * Supabaseクライアントを初回転送時にだけ生成し、以降は同じ接続設定を再利用する。
+         * Supabaseクライアントを初回の転送・保管時に生成し、以降は同じ接続設定を再利用する。
          * お絵描きや既存のobniz操作を、Storage接続の準備より先に使えるよう遅延初期化する。
          */
         function getSupabaseClient() {
@@ -1425,6 +1449,133 @@
           }
 
           return supabaseClient;
+        }
+
+        /**
+         * 展示用バケット直下のdrawing-画像を全ページから収集する。
+         * 移動しながらoffsetを進めると一覧が詰まって未処理画像を飛ばすため、
+         * 移動を始める前に対象を確定する。idがないフォルダーは対象にしない。
+         */
+        async function getDrawingsToArchive(storage) {
+          const pageSize = 100;
+          const drawings = [];
+
+          for (let offset = 0; ; offset += pageSize) {
+            const { data, error } = await storage.list('', {
+              limit: pageSize,
+              offset,
+              sortBy: { column: 'name', order: 'asc' },
+            });
+
+            if (error) throw error;
+            if (!Array.isArray(data)) {
+              throw new Error('保管対象の画像一覧を取得できませんでした。');
+            }
+
+            drawings.push(...data.filter(file =>
+              file.id && typeof file.name === 'string' &&
+              file.name.startsWith(DRAWING_FILE_PREFIX) && !file.name.includes('/')
+            ));
+
+            if (data.length < pageSize) return drawings;
+          }
+        }
+
+        /**
+         * 描いた画像だけを別バケットへ移し、最後に一度だけ展示の再取得を要求する。
+         * 移動失敗時はそこで止め、確認できた成功件数とエラーを表示する。
+         * 一部移動や応答だけの通信失敗でも一覧が変わり得るため再取得は要求する。
+         * 0件でも通知することで、前回の通知だけ失敗した場合にも再実行できる。
+         */
+        async function archiveDrawings() {
+          if (isArchiving || isUploading || isSendingImageMessage) return;
+
+          isArchiving = true;
+          setImageControlsDisabled(true);
+          setControllerStatus('保管対象の画像を確認しています…', 'loading');
+
+          try {
+            if (ARCHIVE_BUCKET === STORAGE_BUCKET) {
+              throw new Error('保管先と展示用のバケットは別にしてください。');
+            }
+
+            const storage = getSupabaseClient().storage.from(STORAGE_BUCKET);
+            const drawings = await getDrawingsToArchive(storage);
+            let movedCount = 0;
+            let moveFailure = null;
+
+            for (const file of drawings) {
+              setControllerStatus(
+                `画像を保管先へ移動しています…（${movedCount}/${drawings.length}枚）`,
+                'loading'
+              );
+
+              try {
+                // moveを使い、手動のコピー＋削除や既存の保管画像への上書きを避ける。
+                const { error } = await storage.move(file.name, file.name, {
+                  destinationBucket: ARCHIVE_BUCKET,
+                });
+                if (error) throw error;
+                movedCount++;
+              } catch (error) {
+                moveFailure = { fileName: file.name, error };
+                console.error('画像保管エラー:', {
+                  sourceBucket: STORAGE_BUCKET,
+                  destinationBucket: ARCHIVE_BUCKET,
+                  objectName: file.name,
+                  movedCount,
+                  error,
+                });
+                break;
+              }
+            }
+
+            setControllerStatus(
+              `保管完了: ${movedCount}/${drawings.length}枚。展示一覧の更新を要求しています…`,
+              'loading'
+            );
+
+            let notificationFailed = false;
+            try {
+              await sendObnizMessage('image-fetch');
+            } catch (error) {
+              notificationFailed = true;
+              console.error('画像保管後のimage-fetch送信エラー:', error);
+            }
+
+            const resultMessage = moveFailure
+              ? `保管完了: ${movedCount}/${drawings.length}枚。次の画像を移動できなかったため中断しました。\n${moveFailure.fileName}: ${formatTransferError(moveFailure.error)}`
+              : drawings.length > 0
+                ? `${movedCount}枚の画像を保管先へ移動しました。`
+                : '保管対象の画像はありません。';
+            const refreshMessage = notificationFailed
+              ? '展示一覧の更新要求に失敗しました。「画像を更新」を押してください。'
+              : '展示一覧の更新を要求しました。';
+
+            setControllerStatus(
+              `${resultMessage}\n${refreshMessage}`,
+              moveFailure || notificationFailed ? 'error' : 'success'
+            );
+          } catch (error) {
+            console.error('保管対象の画像取得エラー:', error);
+            setControllerStatus(
+              `画像の保管を開始できませんでした。\n${formatTransferError(error)}`,
+              'error'
+            );
+          } finally {
+            isArchiving = false;
+            setImageControlsDisabled(false);
+          }
+        }
+
+        /**
+         * 同じcontrollerから移動・転送・画像更新を重ねないよう操作をまとめて止める。
+         * main側の一覧取得完了を待つ機能ではなく、この画面での連打・同時操作を防ぐ。
+         */
+        function setImageControlsDisabled(disabled) {
+          for (const id of ['open-drawing', 'change', 'fetch', 'archive-drawings']) {
+            document.getElementById(id).disabled = disabled;
+          }
         }
 
         /**
@@ -1544,11 +1695,13 @@
 
         /**
          * 通常コントローラーからのobnizメッセージ送信と、ボタン・結果表示をまとめて扱う。
-         * 送信中は対象ボタンだけを無効化し、同じ命令の連打を防ぐ。
+         * 送信中は画像操作を止め、保管処理や画像転送を重ねないようにする。
          */
         async function sendControllerMessage(message, successMessage) {
-          const button = message === 'image-change' ? $('#change') : $('#fetch');
-          button.prop('disabled', true);
+          if (isArchiving || isUploading || isSendingImageMessage) return;
+
+          isSendingImageMessage = true;
+          setImageControlsDisabled(true);
           setControllerStatus('送信しています…', 'loading');
 
           try {
@@ -1558,7 +1711,8 @@
             console.error(`${message}送信エラー:`, error);
             setControllerStatus('メッセージを送信できませんでした。', 'error');
           } finally {
-            button.prop('disabled', false);
+            isSendingImageMessage = false;
+            setImageControlsDisabled(false);
           }
         }
 
