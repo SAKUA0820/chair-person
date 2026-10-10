@@ -10,6 +10,6 @@ https://sakua-portfolio.studio.site/chair-person
 
 controller の「お絵描き画像を保管」ボタンは、`drawing-` で始まる画像を保管用バケットへ移動し、展示画面の画像一覧更新を要求します。
 
-[Supabase の設定手順](docs/archive-setup.md)に従って、保管用バケットとポリシーを用意してください。
+使用前に Supabase で `chair-person-archive` バケットを作成し、`storage.objects` に画像の移動で必要となる `SELECT`・`UPDATE` ポリシーを設定してください。
 
 外部通信を行わない動作検証: `node --test tests/archive-drawings.test.cjs`
