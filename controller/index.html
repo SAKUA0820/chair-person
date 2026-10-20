@@ -313,6 +313,15 @@
         overflow: hidden;
       }
 
+      /* 描画中の指やペンの移動を、iPadが文字選択や長押し操作として扱うのを防ぐ。 */
+      .drawing-mode,
+      .drawing-mode * {
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+
       .drawing-mode[hidden] {
         display: none;
       }
@@ -899,6 +908,9 @@
         const STORAGE_BUCKET = 'chair-person-backrest';
         const ARCHIVE_BUCKET = 'chair-person-archive';
         const DRAWING_FILE_PREFIX = 'drawing-';
+        const DRAWING_UPLOAD_TIMEOUT_MS = 25 * 1000;
+        const DRAWING_NOTIFICATION_TIMEOUT_MS = 15 * 1000;
+        const DRAWING_RETRY_DELAY_MS = 500;
         const OBNIZ_MESSAGE_URL = 'https://obniz.com/obniz/XXXX-XXXX/message';
         const SENSOR_THRESHOLD_DEFAULT = 0.5;
         const SENSOR_THRESHOLD_MIN = 0;
@@ -1174,7 +1186,7 @@
 
         /**
          * 確認オーバーレイを閉じ、途中のスワイプ状態も破棄する。
-         * ネットワーク処理の結果が確定するまでは閉じられない。
+         * 転送の結果表示またはタイムアウトで操作ロックが解除されるまでは閉じられない。
          */
         function hideSwipeOverlay(event) {
           if (event) event.stopPropagation();
@@ -1273,12 +1285,30 @@
         /**
          * キャンバスをPNGへ変換してSupabaseへ保存し、保存成功後にimage-fetchを送る。
          * 展示画面へ存在しない画像を通知しないよう、アップロードと通知は必ずこの順で行う。
+         * 保存と通知の待機時間にそれぞれ上限を設け、応答がなくても描いた絵を残して操作へ戻す。
          * 保存後の通知だけ失敗した場合は再アップロードせず、手動更新を案内する。
          */
         async function uploadDrawing() {
           if (isUploading || isArchiving || isSendingImageMessage) return;
 
           let objectName = '';
+          let imageBlob;
+          let uploadAttempt = 0;
+          const startedAt = Date.now();
+          const uploadController = new AbortController();
+          let uploadTimeoutId;
+          const uploadTimeoutError = new Error(
+            `転送開始から${DRAWING_UPLOAD_TIMEOUT_MS / 1000}秒が経過したため、待機を終了しました。`
+          );
+          uploadTimeoutError.name = 'TimeoutError';
+
+          // PNG化から保存完了までを25秒とし、保存後の通知は別の期限で待つ。
+          const uploadTimeout = new Promise((resolve, reject) => {
+            uploadTimeoutId = window.setTimeout(() => {
+              reject(uploadTimeoutError);
+              uploadController.abort();
+            }, DRAWING_UPLOAD_TIMEOUT_MS);
+          });
 
           isUploading = true;
           setImageControlsDisabled(true);
@@ -1288,20 +1318,46 @@
           swipeMessage.textContent = '画像の保存が終わるまで、そのままお待ちください。';
 
           try {
-            const imageBlob = await canvasToBlob(canvas);
+            // 各段階で待機を打ち切り、時間切れ後の応答から通知や画面更新へ進ませない。
+            imageBlob = await Promise.race([canvasToBlob(canvas), uploadTimeout]);
             objectName = createObjectName();
-            const { error } = await getSupabaseClient().storage
-              .from(STORAGE_BUCKET)
-              .upload(objectName, imageBlob, {
-                cacheControl: '3600',
-                contentType: 'image/png',
-                upsert: false,
-              });
+            await Promise.race([
+              uploadDrawingWithRetry(
+                getSupabaseClient(uploadController.signal).storage.from(STORAGE_BUCKET),
+                objectName,
+                imageBlob,
+                uploadController.signal,
+                (attempt) => {
+                  uploadAttempt = attempt;
+                  if (attempt > 1) swipeMessage.textContent = '通信が途切れたため、もう一度送信しています…';
+                }
+              ),
+              uploadTimeout,
+            ]);
 
-            if (error) throw error;
+            window.clearTimeout(uploadTimeoutId);
+            swipeMessage.textContent = '画像を保存しました。展示への更新通知を送っています。';
+
+            const notificationController = new AbortController();
+            let notificationTimeoutId;
+            const notificationTimeoutError = new Error(
+              `更新通知の送信開始から${DRAWING_NOTIFICATION_TIMEOUT_MS / 1000}秒が経過したため、待機を終了しました。`
+            );
+            notificationTimeoutError.name = 'TimeoutError';
+            const notificationTimeout = new Promise((resolve, reject) => {
+              notificationTimeoutId = window.setTimeout(
+                () => {
+                  reject(notificationTimeoutError);
+                  notificationController.abort();
+                }, DRAWING_NOTIFICATION_TIMEOUT_MS
+              );
+            });
 
             try {
-              await sendObnizMessage('image-fetch');
+              await Promise.race([
+                sendObnizMessage('image-fetch', notificationController.signal),
+                notificationTimeout,
+              ]);
               showTransferResult(
                 '転送できました',
                 '最新の画像に切り替えました。',
@@ -1309,19 +1365,34 @@
                 'success'
               );
             } catch (messageError) {
-              console.error('image-fetch送信エラー:', messageError);
+              console.error('image-fetch送信エラー:', {
+                stage: 'notification',
+                objectName,
+                elapsedMs: Date.now() - startedAt,
+                error: messageError,
+              });
+              const notificationMessage = messageError === notificationTimeoutError
+                ? '更新通知が時間内に完了しませんでした。「画像を更新」を押してください。'
+                : '切り替え通知だけ失敗しました。「画像を更新」を押してください。';
               showTransferResult(
                 '画像を転送しました',
-                '切り替え通知だけ失敗しました。「画像を更新」を押してください。',
-                '画像は転送済みですが、切り替え通知に失敗しました。',
+                notificationMessage,
+                `画像は転送済みです。${notificationMessage}`,
                 'error'
               );
+            } finally {
+              window.clearTimeout(notificationTimeoutId);
             }
           } catch (uploadError) {
             // 認証情報は含めず、Supabaseが返す診断情報と転送対象だけを記録する。
             const errorDetails = uploadError && typeof uploadError === 'object' ? uploadError : {};
             const errorMessage = formatTransferError(uploadError);
             console.log('画像転送エラー詳細:', {
+              stage: objectName ? 'storage-upload' : 'canvas-export',
+              elapsedMs: Date.now() - startedAt,
+              attempt: uploadAttempt,
+              imageBytes: imageBlob?.size ?? null,
+              online: window.navigator?.onLine ?? null,
               name: errorDetails.name || null,
               message: errorDetails.message || String(uploadError),
               status: errorDetails.status || null,
@@ -1331,14 +1402,106 @@
               objectName: objectName || null,
               error: uploadError,
             });
+            const timedOut = uploadError === uploadTimeoutError;
+            const networkError = isDrawingNetworkError(uploadError);
+            // 待機の終了はサーバーでの保存取消しではないため、未保存とは断定しない。
+            const retryMessage = timedOut || networkError
+              ? objectName
+                ? '\n画像が保存されている場合があります。「画像を更新」で確認してから再送してください。'
+                : '\n描いた絵は残っています。もう一度スワイプしてください。'
+              : '';
             isUploading = false;
             setImageControlsDisabled(false);
             cancelTransferButton.disabled = false;
             swipeOverlay.className = 'swipe-overlay';
-            swipeTitle.textContent = '転送できませんでした';
-            swipeMessage.textContent = errorMessage;
-            showDrawingToast(`転送エラー\n${errorMessage}`, 'error', 10000);
+            swipeTitle.textContent = timedOut ? '転送の確認がタイムアウトしました' : '転送できませんでした';
+            swipeMessage.textContent = `${errorMessage}${retryMessage}`;
+            showDrawingToast(`${swipeTitle.textContent}\n${swipeMessage.textContent}`, 'error', 10000);
+          } finally {
+            window.clearTimeout(uploadTimeoutId);
+            uploadController.abort();
           }
+        }
+
+        /**
+         * 応答を受け取れなかった通信だけを一度再試行する。権限や容量のエラーは繰り返さない。
+         * 同じ名前・PNGで再送し、最初の保存の応答だけ失われても画像を二重に作らない。
+         */
+        async function uploadDrawingWithRetry(storage, objectName, imageBlob, signal, onAttempt) {
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            if (signal.aborted) throw drawingAbortError();
+            onAttempt(attempt);
+            let uploadError;
+            try {
+              const { error } = await storage.upload(objectName, imageBlob, {
+                cacheControl: '3600',
+                contentType: 'image/png',
+                upsert: false,
+              });
+              uploadError = error;
+            } catch (error) {
+              uploadError = error;
+            }
+            if (signal.aborted) throw drawingAbortError();
+            if (!uploadError) return;
+
+            // 再送時の重複は、先の通信で保存済みの可能性がある。名前とサイズを照合する。
+            if (attempt === 2 && isDrawingAlreadyExistsError(uploadError)) {
+              const { data, error } = await storage.list('', { search: objectName, limit: 100 });
+              if (signal.aborted) throw drawingAbortError();
+              if (error) throw error;
+              if (Number.isFinite(imageBlob.size) &&
+                data?.some(file => file.name === objectName && file.metadata?.size === imageBlob.size)) return;
+            }
+
+            if (attempt === 2 || !isDrawingNetworkError(uploadError)) throw uploadError;
+            console.log('画像転送の通信エラー・再試行:', {
+              objectName,
+              attempt,
+              imageBytes: imageBlob.size,
+              error: uploadError,
+            });
+            await waitForDrawingRetry(signal);
+          }
+        }
+
+        /** HTTP応答のない既知の通信エラーに限定し、コードのTypeErrorを再送で隠さない。 */
+        function isDrawingNetworkError(error) {
+          if (!error || Number(error.status || error.statusCode) > 0) return false;
+          const cause = error.originalError || error.cause || error;
+          if (cause.name === 'AbortError' || Number(cause.status || cause.statusCode) > 0) return false;
+          return /^(?:Failed to fetch|Load failed|Network request failed|NetworkError when attempting to fetch resource\.?)$/i
+            .test(cause.message || error.message || '');
+        }
+
+        /** Storageの新旧エラー形式に対応する。初回の重複は成功として扱わない。 */
+        function isDrawingAlreadyExistsError(error) {
+          return ['ResourceAlreadyExists', 'KeyAlreadyExists', 'Duplicate', 'already_exists'].includes(error.code) ||
+            ([400, 409].includes(Number(error.status || error.statusCode)) &&
+              /(?:resource|asset|key).*already exists|duplicate/i.test(error.message || ''));
+        }
+
+        /** 中断した処理を通信エラーの再試行対象に含めないため、専用のエラー名を使う。 */
+        function drawingAbortError() {
+          const error = new Error('画像の転送を中断しました。');
+          error.name = 'AbortError';
+          return error;
+        }
+
+        /** 再試行までの短い待機も中断可能にし、時間切れ後に新しい送信を始めない。 */
+        function waitForDrawingRetry(signal) {
+          return new Promise((resolve, reject) => {
+            if (signal.aborted) return reject(drawingAbortError());
+            const timer = window.setTimeout(() => {
+              signal.removeEventListener('abort', cancel);
+              resolve();
+            }, DRAWING_RETRY_DELAY_MS);
+            const cancel = () => {
+              window.clearTimeout(timer);
+              reject(drawingAbortError());
+            };
+            signal.addEventListener('abort', cancel, { once: true });
+          });
         }
 
         /**
@@ -1432,19 +1595,30 @@
         }
 
         /**
-         * Supabaseクライアントを初回の転送・保管時に生成し、以降は同じ接続設定を再利用する。
+         * 保管操作はクライアントを再利用し、描画の転送は中断信号を固定した専用クライアントを使う。
+         * 前回の遅い通信が次回の信号を参照しないよう、転送ごとに通信の寿命を分離する。
          * お絵描きや既存のobniz操作を、Storage接続の準備より先に使えるよう遅延初期化する。
          */
-        function getSupabaseClient() {
+        function getSupabaseClient(signal) {
+          if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+            throw new Error('Supabase SDKを読み込めませんでした。');
+          }
+
+          if (SUPABASE_URL === 'SUPABASE_URL' || SUPABASE_KEY === 'SUPABASE_KEY') {
+            throw new Error('controller側のSupabase URLまたはKeyが未設定です。');
+          }
+
+          if (signal) {
+            return window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+              // 利用者ログインは使わず公開用キーで接続する。Authの監視処理を転送ごとに増やさない。
+              accessToken: async () => null,
+              global: {
+                fetch: (url, options) => window.fetch(url, { ...options, signal }),
+              },
+            });
+          }
+
           if (!supabaseClient) {
-            if (!window.supabase || typeof window.supabase.createClient !== 'function') {
-              throw new Error('Supabase SDKを読み込めませんでした。');
-            }
-
-            if (SUPABASE_URL === 'SUPABASE_URL' || SUPABASE_KEY === 'SUPABASE_KEY') {
-              throw new Error('controller側のSupabase URLまたはKeyが未設定です。');
-            }
-
             supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
           }
 
@@ -1719,12 +1893,22 @@
         /**
          * obnizのMessage APIへのGETリクエストをPromiseとして返す。
          * 呼び出し側が送信完了を待ってから成功表示や次の処理へ進める形にしている。
+         * 中断信号が渡された転送通知は、タイムアウト時に実際のリクエストも止める。
          */
-        function sendObnizMessage(message) {
+        function sendObnizMessage(message, signal) {
           return new Promise((resolve, reject) => {
-            $.get(OBNIZ_MESSAGE_URL, { data: message })
-              .done(resolve)
-              .fail(reject);
+            if (signal?.aborted) return reject(drawingAbortError());
+            const request = $.get(OBNIZ_MESSAGE_URL, { data: message });
+            const cancel = () => request.abort();
+            const cleanup = () => signal?.removeEventListener('abort', cancel);
+            signal?.addEventListener('abort', cancel, { once: true });
+            request.done((result) => {
+              cleanup();
+              resolve(result);
+            }).fail((error) => {
+              cleanup();
+              reject(error);
+            });
           });
         }
 

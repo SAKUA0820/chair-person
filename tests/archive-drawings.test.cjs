@@ -40,6 +40,9 @@ function createController(options = {}) {
     messages: [],
     operations: [],
     logs: [],
+    clients: [],
+    fetches: [],
+    abortedMessages: [],
   };
   const elements = new Map();
   const noop = () => {};
@@ -73,7 +76,9 @@ function createController(options = {}) {
       setPointerCapture: noop,
       hasPointerCapture: () => false,
       releasePointerCapture: noop,
-      toBlob: (callback) => callback({ type: 'image/png' }),
+      toBlob: (callback) => options.onBlob
+        ? options.onBlob(callback)
+        : callback({ type: 'image/png', size: 2048 }),
       handlers,
     };
     elements.set(id, result);
@@ -109,23 +114,31 @@ function createController(options = {}) {
     state.operations.push({ type: 'message', data });
     let onSuccess;
     let onFailure;
+    let aborted = false;
     Promise.resolve().then(async () => {
       try {
         await options.onMessage?.(data, state);
-        onSuccess?.();
+        if (!aborted) onSuccess?.();
       } catch (error) {
-        onFailure?.(error);
+        if (!aborted) onFailure?.(error);
       }
     });
     const request = {
       done(callback) { onSuccess = callback; return request; },
       fail(callback) { onFailure = callback; return request; },
+      abort() {
+        if (aborted) return;
+        aborted = true;
+        state.abortedMessages.push(data);
+        onFailure?.({ status: 0, statusText: 'abort' });
+      },
     };
     return request;
   };
 
   const supabase = {
-    createClient() {
+    createClient(url, key, clientOptions) {
+      state.clients.push({ url, key, options: clientOptions });
       return {
         storage: {
           from(bucket) {
@@ -136,8 +149,10 @@ function createController(options = {}) {
                 state.operations.push({ type: 'list', ...call });
                 const overridden = await options.onList?.(call, state);
                 if (overridden) return overridden;
-                const sorted = [...state.files].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
-                return { data: sorted.slice(query.offset, query.offset + query.limit), error: null };
+                const sorted = state.files.filter((item) => !query.search || item.name.includes(query.search))
+                  .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+                const offset = query.offset || 0;
+                return { data: sorted.slice(offset, offset + query.limit), error: null };
               },
               async move(from, to, moveOptions) {
                 const call = { bucket, from, to, options: moveOptions };
@@ -157,6 +172,12 @@ function createController(options = {}) {
                 state.uploads.push(call);
                 const overridden = await options.onUpload?.(call, state);
                 if (overridden) return overridden;
+                // SDKのfetch差し替えに渡したsignalまで確認し、実際の通信は行わない。
+                if (options.onFetch) {
+                  return clientOptions.global.fetch(`${url}/storage/v1/object/${bucket}/${name}`, {
+                    method: 'POST', body: blob,
+                  });
+                }
                 return { data: {}, error: null };
               },
             };
@@ -166,23 +187,54 @@ function createController(options = {}) {
     },
   };
 
-  const timers = [];
+  const timers = new Map();
+  let nextTimerId = 0;
+  let elapsedTime = 0;
+  function advanceTimersBy(duration) {
+    const targetTime = elapsedTime + duration;
+    while (true) {
+      const next = [...timers.values()]
+        .filter((timer) => timer.at <= targetTime)
+        .sort((a, b) => a.at - b.at || a.id - b.id)[0];
+      if (!next) break;
+      elapsedTime = next.at;
+      timers.delete(next.id);
+      next.callback();
+    }
+    elapsedTime = targetTime;
+  }
   const window = {
     supabase,
+    AbortController,
+    fetch(url, init) {
+      const call = { url, init };
+      state.fetches.push(call);
+      return options.onFetch(call, state);
+    },
     addEventListener: noop,
     requestAnimationFrame: noop,
-    setTimeout(callback, delay) { timers.push({ callback, delay }); return timers.length; },
-    clearTimeout: noop,
+    setTimeout(callback, delay) {
+      const id = ++nextTimerId;
+      timers.set(id, { id, callback, delay, at: elapsedTime + delay });
+      return id;
+    },
+    clearTimeout(id) { timers.delete(id); },
   };
   vm.runInNewContext(inlineScript, {
     $,
     window,
+    AbortController,
+    DOMException,
     document: {
       body: { style: {} },
       getElementById: element,
       querySelector: (selector) => element(selector),
     },
-    console: { log: (...args) => state.logs.push(args), error: (...args) => state.logs.push(args) },
+    console: {
+      log: (...args) => state.logs.push(args),
+      error: (...args) => state.logs.push(args),
+      warn: (...args) => state.logs.push(args),
+    },
   }, { filename: 'controller/index.html' });
 
   return {
@@ -202,9 +254,9 @@ function createController(options = {}) {
       const result = element('controller-status');
       return { text: result.textContent, state: result.dataset.state };
     },
-    runTimers(delay) {
-      for (const timer of timers.filter((item) => item.delay === delay)) timer.callback();
-    },
+    runTimers: advanceTimersBy,
+    advanceTimersBy,
+    activeTimerCount: (delay) => [...timers.values()].filter((timer) => timer.delay === delay).length,
     assertControlsDisabled(disabled) {
       for (const id of imageControlIds) assert.equal(element(id).disabled, disabled, `#${id}.disabled`);
     },
@@ -405,5 +457,339 @@ test('描いた絵の転送中は保管と画像操作を拒否し、転送結�
   assert.deepEqual(controller.state.messages, ['image-fetch']);
   controller.assertControlsDisabled(true);
   controller.runTimers(1600);
+  controller.assertControlsDisabled(false);
+});
+
+// Promiseの完了処理を実行してから画面状態を確認する。実際の通信や25秒の待機は行わない。
+const flushAsync = () => new Promise((resolve) => setImmediate(resolve));
+
+async function startDrawingTransfer(controller) {
+  await controller.click('open-drawing');
+  await controller.click('start-transfer');
+  controller.event('swipe-preview', 'pointerdown', { pointerId: 1, clientY: 700, pointerType: 'touch' });
+  controller.event('swipe-preview', 'pointerup', { pointerId: 1, clientY: 100, pointerType: 'touch' });
+  await flushAsync();
+}
+
+test('PNG化が応答しない場合も25秒で解除し、遅いPNG結果からアップロードしない', async () => {
+  let finishBlob;
+  const controller = createController({ onBlob: (callback) => { finishBlob = callback; } });
+  await startDrawingTransfer(controller);
+
+  controller.advanceTimersBy(24999);
+  await flushAsync();
+  controller.assertControlsDisabled(true);
+  assert.match(controller.element('swipe-overlay').className, /is-uploading/);
+
+  controller.advanceTimersBy(1);
+  await flushAsync();
+  controller.assertControlsDisabled(false);
+  assert.equal(controller.element('cancel-transfer').disabled, false);
+  assert.equal(controller.element('drawing-mode').hidden, false);
+  assert.equal(controller.element('swipe-title').textContent, '転送の確認がタイムアウトしました');
+  assert.doesNotMatch(controller.element('swipe-overlay').className, /is-uploading/);
+
+  finishBlob({ type: 'image/png' });
+  await flushAsync();
+  assert.equal(controller.state.uploads.length, 0);
+  assert.deepEqual(controller.state.messages, []);
+});
+
+for (const lateResult of ['success', 'failure']) {
+  test(`アップロード時間切れ後に再試行でき、前回の遅い${lateResult}は新しい結果を変更しない`, async () => {
+    const uploadGate = deferred();
+    const controller = createController({
+      onUpload: (call, state) => state.uploads.length === 1 ? uploadGate.promise : undefined,
+    });
+    await startDrawingTransfer(controller);
+    assert.equal(controller.state.uploads.length, 1);
+
+    controller.advanceTimersBy(25000);
+    await flushAsync();
+    controller.assertControlsDisabled(false);
+    assert.equal(controller.element('cancel-transfer').disabled, false);
+    assert.equal(controller.element('drawing-mode').hidden, false);
+    assert.equal(controller.element('swipe-title').textContent, '転送の確認がタイムアウトしました');
+    assert.match(controller.element('swipe-message').textContent, /保存されている場合/);
+    assert.doesNotMatch(controller.element('swipe-overlay').className, /is-uploading/);
+    assert.deepEqual(controller.state.messages, []);
+
+    await startDrawingTransfer(controller);
+    assert.equal(controller.state.uploads.length, 2);
+    assert.deepEqual(controller.state.messages, ['image-fetch']);
+    assert.equal(controller.element('swipe-title').textContent, '転送できました');
+    assert.equal(controller.activeTimerCount(25000), 0);
+
+    if (lateResult === 'success') uploadGate.resolve({ data: {}, error: null });
+    else uploadGate.reject(new Error('Load failed'));
+    await flushAsync();
+    assert.deepEqual(controller.state.messages, ['image-fetch']);
+    assert.equal(controller.element('swipe-title').textContent, '転送できました');
+    controller.assertControlsDisabled(true);
+    controller.advanceTimersBy(1600);
+    controller.assertControlsDisabled(false);
+  });
+}
+
+test('初回成功のタイマーを解除し、2回目のアップロードも開始から25秒で打ち切る', async () => {
+  const uploadGate = deferred();
+  const controller = createController({
+    onUpload: (call, state) => state.uploads.length === 2 ? uploadGate.promise : undefined,
+  });
+  await startDrawingTransfer(controller);
+  assert.equal(controller.element('swipe-title').textContent, '転送できました');
+  assert.equal(controller.activeTimerCount(25000), 0);
+  controller.advanceTimersBy(1600);
+  controller.assertControlsDisabled(false);
+
+  await startDrawingTransfer(controller);
+  assert.equal(controller.activeTimerCount(25000), 1);
+  // 初回開始から25秒の時点では、2回目の期限にはまだ到達していない。
+  controller.advanceTimersBy(23400);
+  await flushAsync();
+  controller.assertControlsDisabled(true);
+  controller.advanceTimersBy(1599);
+  await flushAsync();
+  assert.match(controller.element('swipe-overlay').className, /is-uploading/);
+  controller.advanceTimersBy(1);
+  await flushAsync();
+  controller.assertControlsDisabled(false);
+  assert.equal(controller.element('swipe-title').textContent, '転送の確認がタイムアウトしました');
+  assert.deepEqual(controller.state.messages, ['image-fetch']);
+
+  uploadGate.resolve();
+  await flushAsync();
+  assert.deepEqual(controller.state.messages, ['image-fetch']);
+});
+
+test('保存後の通知には別途15秒を確保し、時間切れでは保存済みであることを示す', async () => {
+  const uploadGate = deferred();
+  const messageGate = deferred();
+  const controller = createController({
+    onUpload: () => uploadGate.promise,
+    onMessage: () => messageGate.promise,
+  });
+  await startDrawingTransfer(controller);
+  controller.advanceTimersBy(20000);
+  uploadGate.resolve();
+  await flushAsync();
+  assert.deepEqual(controller.state.messages, ['image-fetch']);
+  assert.equal(controller.activeTimerCount(25000), 0);
+  assert.equal(controller.activeTimerCount(15000), 1);
+
+  controller.advanceTimersBy(14999);
+  await flushAsync();
+  assert.match(controller.element('swipe-overlay').className, /is-uploading/);
+  controller.advanceTimersBy(1);
+  await flushAsync();
+  assert.doesNotMatch(controller.element('swipe-overlay').className, /is-uploading/);
+  assert.equal(controller.element('swipe-title').textContent, '画像を転送しました');
+  assert.match(controller.element('swipe-message').textContent, /時間内に完了しませんでした/);
+  assert.match(controller.element('swipe-message').textContent, /画像を更新/);
+  assert.equal(controller.state.uploads.length, 1);
+  assert.equal(controller.activeTimerCount(15000), 0);
+
+  messageGate.resolve();
+  await flushAsync();
+  assert.equal(controller.element('swipe-title').textContent, '画像を転送しました');
+  controller.advanceTimersBy(1600);
+  controller.assertControlsDisabled(false);
+  assert.equal(controller.element('cancel-transfer').disabled, false);
+  assert.equal(controller.element('drawing-status').dataset.state, 'error');
+  assert.match(controller.element('drawing-status').textContent, /画像を更新/);
+});
+
+test('通知成功時に15秒のタイマーを解除し、2回目の通知を早く打ち切らない', async () => {
+  const messageGate = deferred();
+  const controller = createController({
+    onMessage: (message, state) => state.messages.length === 2 ? messageGate.promise : undefined,
+  });
+  await startDrawingTransfer(controller);
+  assert.equal(controller.element('swipe-title').textContent, '転送できました');
+  assert.equal(controller.activeTimerCount(15000), 0);
+  controller.advanceTimersBy(1600);
+
+  await startDrawingTransfer(controller);
+  assert.equal(controller.activeTimerCount(15000), 1);
+  // 初回通知から15秒の時点を過ぎても、2回目の通知にはまだ待ち時間が残る。
+  controller.advanceTimersBy(14999);
+  await flushAsync();
+  assert.match(controller.element('swipe-overlay').className, /is-uploading/);
+  controller.advanceTimersBy(1);
+  await flushAsync();
+  assert.equal(controller.element('swipe-title').textContent, '画像を転送しました');
+  assert.equal(controller.activeTimerCount(15000), 0);
+  assert.deepEqual(controller.state.messages, ['image-fetch', 'image-fetch']);
+
+  messageGate.resolve();
+  await flushAsync();
+  controller.advanceTimersBy(1600);
+  controller.assertControlsDisabled(false);
+});
+
+for (const message of ['Load failed', 'Failed to fetch', 'NetworkError when attempting to fetch resource.']) {
+  test(`2作品目の一時的な通信失敗（${message}）を同じ画像・名前で1回再送する`, async () => {
+    const controller = createController({
+      onUpload: (call, state) => state.uploads.length === 2
+        ? { error: { name: 'StorageUnknownError', message, originalError: new TypeError(message) } }
+        : undefined,
+    });
+    await startDrawingTransfer(controller);
+    controller.advanceTimersBy(1600);
+    await controller.click('clear-canvas');
+    await startDrawingTransfer(controller);
+    controller.assertControlsDisabled(true);
+    assert.equal(controller.state.uploads.length, 2);
+
+    controller.advanceTimersBy(500);
+    await flushAsync();
+    const [first, second, retry] = controller.state.uploads;
+    assert.equal(controller.state.uploads.length, 3);
+    assert.notEqual(first.name, second.name);
+    assert.equal(second.name, retry.name);
+    assert.equal(second.blob, retry.blob);
+    assert.equal(retry.options.upsert, false);
+    assert.deepEqual(controller.state.messages, ['image-fetch', 'image-fetch']);
+    assert.equal(controller.element('swipe-title').textContent, '転送できました');
+    controller.advanceTimersBy(1600);
+    controller.assertControlsDisabled(false);
+  });
+}
+
+for (const status of [409, 400]) {
+  test(`保存済みの応答が失われた場合は再送の重複エラー(${status})を実ファイルと照合する`, async () => {
+    const controller = createController({
+      onUpload(call, state) {
+        if (state.uploads.length === 1) {
+          state.files.push({ ...file(call.name), metadata: { size: call.blob.size } });
+          return { error: { message: 'Load failed' } };
+        }
+        return { error: { message: 'The resource already exists', statusCode: String(status) } };
+      },
+    });
+    await startDrawingTransfer(controller);
+    controller.advanceTimersBy(500);
+    await flushAsync();
+    assert.equal(controller.state.uploads.length, 2);
+    assert.equal(controller.state.files.length, 1);
+    assert.equal(controller.state.lists.length, 1);
+    assert.equal(controller.state.lists[0].query.search, controller.state.uploads[0].name);
+    assert.equal(controller.state.lists[0].bucket, SOURCE_BUCKET);
+    assert.deepEqual(controller.state.messages, ['image-fetch']);
+    assert.equal(controller.element('swipe-title').textContent, '転送できました');
+  });
+}
+
+for (const mismatch of ['name', 'size', 'missing-size', 'list-error']) {
+  test(`重複エラー後の照合で${mismatch}なら保存成功とせず通知もしない`, async () => {
+    const controller = createController({
+      onUpload: (call, state) => ({ error: state.uploads.length === 1
+        ? { message: 'Load failed' }
+        : { message: 'The resource already exists', status: 409 } }),
+      onList(call, state) {
+        const upload = state.uploads[0];
+        if (mismatch === 'list-error') return { data: null, error: { message: 'Permission denied', status: 403 } };
+        return { data: [{
+          ...file(mismatch === 'name' ? `other-${upload.name}` : upload.name),
+          metadata: mismatch === 'missing-size' ? {} : { size: upload.blob.size + (mismatch === 'size' ? 1 : 0) },
+        }], error: null };
+      },
+    });
+    await startDrawingTransfer(controller);
+    controller.advanceTimersBy(500);
+    await flushAsync();
+    assert.equal(controller.state.uploads.length, 2);
+    assert.equal(controller.element('swipe-title').textContent, '転送できませんでした');
+    assert.deepEqual(controller.state.messages, []);
+    controller.assertControlsDisabled(false);
+  });
+}
+
+for (const error of [
+  { message: 'new row violates row-level security policy', status: 403 },
+  { message: 'The resource already exists', status: 409 },
+]) {
+  test(`最初の転送でHTTP ${error.status}が返る場合は再送・保存照合をしない`, async () => {
+    const controller = createController({ onUpload: () => ({ error }) });
+    await startDrawingTransfer(controller);
+    controller.advanceTimersBy(1000);
+    await flushAsync();
+    assert.equal(controller.state.uploads.length, 1);
+    assert.equal(controller.state.lists.length, 0);
+    assert.deepEqual(controller.state.messages, []);
+    controller.assertControlsDisabled(false);
+  });
+}
+
+test('通信失敗が続いても再送は1回で終了し操作ロックを解除する', async () => {
+  const controller = createController({ onUpload: () => { throw new TypeError('Failed to fetch'); } });
+  await startDrawingTransfer(controller);
+  controller.advanceTimersBy(500);
+  await flushAsync();
+  controller.advanceTimersBy(500);
+  await flushAsync();
+  assert.equal(controller.state.uploads.length, 2);
+  assert.deepEqual(controller.state.messages, []);
+  assert.equal(controller.element('swipe-title').textContent, '転送できませんでした');
+  controller.assertControlsDisabled(false);
+});
+
+test('25秒で実際のfetchを中断し、次の転送は別のsignalで開始する', async () => {
+  const secondUpload = deferred();
+  const controller = createController({
+    onFetch: ({ init }, state) => state.fetches.length === 1
+      ? new Promise((resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+      })
+      : secondUpload.promise,
+  });
+  await startDrawingTransfer(controller);
+  const firstSignal = controller.state.fetches[0].init.signal;
+  assert.equal(firstSignal.aborted, false);
+  controller.advanceTimersBy(25000);
+  await flushAsync();
+  assert.equal(firstSignal.aborted, true);
+  assert.equal(controller.element('swipe-title').textContent, '転送の確認がタイムアウトしました');
+  controller.assertControlsDisabled(false);
+
+  await startDrawingTransfer(controller);
+  const secondSignal = controller.state.fetches[1].init.signal;
+  assert.notEqual(firstSignal, secondSignal);
+  assert.equal(secondSignal.aborted, false);
+  secondUpload.resolve({ data: {}, error: null });
+  await flushAsync();
+  assert.equal(controller.element('swipe-title').textContent, '転送できました');
+  assert.deepEqual(controller.state.messages, ['image-fetch']);
+});
+
+test('自動再送の待機中に25秒が来た場合は次のアップロードを開始しない', async () => {
+  const uploadGate = deferred();
+  const controller = createController({ onUpload: () => uploadGate.promise });
+  await startDrawingTransfer(controller);
+  controller.advanceTimersBy(24800);
+  uploadGate.resolve({ error: { message: 'Load failed' } });
+  await flushAsync();
+  controller.advanceTimersBy(200);
+  await flushAsync();
+  controller.advanceTimersBy(500);
+  await flushAsync();
+  assert.equal(controller.state.uploads.length, 1);
+  assert.deepEqual(controller.state.messages, []);
+  assert.equal(controller.element('swipe-title').textContent, '転送の確認がタイムアウトしました');
+  controller.assertControlsDisabled(false);
+});
+
+test('更新通知の15秒タイムアウトでjqXHRも中断する', async () => {
+  const notificationGate = deferred();
+  const controller = createController({ onMessage: () => notificationGate.promise });
+  await startDrawingTransfer(controller);
+  controller.advanceTimersBy(15000);
+  await flushAsync();
+  assert.deepEqual(controller.state.abortedMessages, ['image-fetch']);
+  assert.equal(controller.element('swipe-title').textContent, '画像を転送しました');
+  assert.match(controller.element('swipe-message').textContent, /時間内に完了しませんでした/);
+  notificationGate.resolve();
+  await flushAsync();
+  controller.advanceTimersBy(1600);
   controller.assertControlsDisabled(false);
 });
